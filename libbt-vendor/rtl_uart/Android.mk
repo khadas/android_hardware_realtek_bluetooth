@@ -1,7 +1,8 @@
 LOCAL_PATH := $(call my-dir)
 
 ifneq ($(BOARD_HAVE_BLUETOOTH_RTK),)
-ifeq ($(BLUETOOTH_MODULE),rtl8761)
+#ifeq ($(BLUETOOTH_MODULE),rtl8761)
+ifneq ($(filter rtl8761 rtl8723bs, $(BLUETOOTH_MODULE)),)
 include $(CLEAR_VARS)
 
 BDROID_DIR := $(TOP_DIR)external/bluetooth/bluedroid
@@ -29,5 +30,5 @@ include $(LOCAL_PATH)/vnd_buildcfg.mk
 
 include $(BUILD_SHARED_LIBRARY)
 
-endif
+endif # BLUETOOTH_MODULE
 endif # BOARD_HAVE_BLUETOOTH_RTK
