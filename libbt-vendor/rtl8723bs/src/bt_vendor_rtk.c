@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright (C) 2009-2012 Broadcom Corporation
+ *  Copyright (C) 2009-2012 Realtek Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,40 +20,33 @@
  *
  *  Filename:      bt_vendor_rtk.c
  *
- *  Description:   Broadcom vendor specific library implementation
+ *  Description:   Realtek vendor specific library implementation
  *
  ******************************************************************************/
 
+#undef NDEBUG
 #define LOG_TAG "bt_vendor"
-
-#include <fcntl.h>
-#include <errno.h>
-#include <time.h>
 #include <utils/Log.h>
 #include "bt_vendor_rtk.h"
 #include "upio.h"
+#include "userial_vendor.h"
 
 #ifndef BTVND_DBG
-#define BTVND_DBG FALSE
+#define BTVND_DBG TRUE
 #endif
 
 #if (BTVND_DBG == TRUE)
-#define BTVNDDBG(param, ...) {ALOGD(param, ## __VA_ARGS__);}
+#define BTVNDDBG(param, ...) {ALOGD(param, ## __VA_ARGS__);} 
 #else
 #define BTVNDDBG(param, ...) {}
 #endif
 
 /******************************************************************************
-**  Local type definitions
+**  Externs
 ******************************************************************************/
-#define VND_PORT_NAME_MAXLEN    256
-/* vendor serial control block */
-typedef struct
-{
-    int fd;                     /* fd to Bluetooth device */
-    uint16_t dev_id;
-    char port_name[VND_PORT_NAME_MAXLEN];
-} vnd_userial_cb_t;
+
+void hw_config_start(void);
+
 
 /******************************************************************************
 **  Variables
@@ -61,33 +54,25 @@ typedef struct
 
 bt_vendor_callbacks_t *bt_vendor_cbacks = NULL;
 uint8_t vnd_local_bd_addr[6]={0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-static vnd_userial_cb_t vnd_userial;
 
-/*******************************************************************************
-**
-** Function        ms_delay
-**
-** Description     sleep unconditionally for timeout milliseconds
-**
-** Returns         None
-**
-*******************************************************************************/
-void ms_delay (uint32_t timeout)
+/******************************************************************************
+**  Local type definitions
+******************************************************************************/
+
+/******************************************************************************
+**  Static Variables
+******************************************************************************/
+
+static const tUSERIAL_CFG userial_init_cfg =
 {
-    struct timespec delay;
-    int err;
+    (USERIAL_DATABITS_8 | USERIAL_PARITY_EVEN | USERIAL_STOPBITS_1),
+    USERIAL_BAUD_115200,
+    USERIAL_HW_FLOW_CTRL_OFF
+};
 
-    if (timeout == 0)
-        return;
-
-    delay.tv_sec = timeout / 1000;
-    delay.tv_nsec = 1000 * 1000 * (timeout%1000);
-
-    /* [u]sleep can't be used because it uses SIGALRM */
-    do {
-        err = nanosleep(&delay, &delay);
-    } while (err < 0 && errno ==EINTR);
-}
+/******************************************************************************
+**  Functions
+******************************************************************************/
 
 /*****************************************************************************
 **
@@ -107,10 +92,7 @@ static int init(const bt_vendor_callbacks_t* p_cb, unsigned char *local_bdaddr)
 
     userial_vendor_init();
     upio_init();
-    upio_set_bluetooth_power(UPIO_BT_POWER_ON);
-    ms_delay(200);
-	property_set("bluetooth.btdriver", "true");
-    ms_delay(200);
+
     /* store reference to user callbacks */
     bt_vendor_cbacks = (bt_vendor_callbacks_t *) p_cb;
 
@@ -132,13 +114,27 @@ static int op(bt_vendor_opcode_t opcode, void *param)
     {
         case BT_VND_OP_POWER_CTRL:
             {
-                return 0;
+                int *state = (int *) param;
+                if (*state == BT_VND_PWR_OFF)
+                {
+                    upio_set_bluetooth_power(UPIO_BT_POWER_OFF);
+                    usleep(200000);
+                    BTVNDDBG("set power off and delay 200ms");
+                    
+                }
+                else if (*state == BT_VND_PWR_ON)
+                {
+                    upio_set_bluetooth_power(UPIO_BT_POWER_ON);
+                    usleep(500000);
+                    BTVNDDBG("set power on and delay 500ms");
+                    
+                }
             }
             break;
 
         case BT_VND_OP_FW_CFG:
             {
-            	bt_vendor_cbacks->fwcfg_cb(BT_VND_OP_RESULT_SUCCESS);
+                hw_config_start();
             }
             break;
 
@@ -152,20 +148,14 @@ static int op(bt_vendor_opcode_t opcode, void *param)
             {
                 int (*fd_array)[] = (int (*)[]) param;
                 int fd, idx;
-                int i;
-                for(i = 0;i < 10;i++) {
-                fd = userial_vendor_open();
+                fd = userial_vendor_open((tUSERIAL_CFG *) &userial_init_cfg);
                 if (fd != -1)
                 {
                     for (idx=0; idx < CH_MAX; idx++)
                         (*fd_array)[idx] = fd;
 
                     retval = 1;
-					break;
                 }
-        		ALOGE("open failed try again %d!", i);
-                ms_delay(100);
-				}
                 /* retval contains numbers of open fd of HCI channels */
             }
             break;
@@ -178,98 +168,33 @@ static int op(bt_vendor_opcode_t opcode, void *param)
 
         case BT_VND_OP_GET_LPM_IDLE_TIMEOUT:
             {
-                uint32_t *timeout_ms = (uint32_t *) param;
-                *timeout_ms = 250;
+
             }
             break;
 
         case BT_VND_OP_LPM_SET_MODE:
             {
-        		if (bt_vendor_cbacks)
-        			bt_vendor_cbacks->lpm_cb(BT_VND_OP_RESULT_SUCCESS);
+
             }
             break;
 
         case BT_VND_OP_LPM_WAKE_SET_STATE:
+            {
+
+            }
             break;
     }
 
     return retval;
 }
 
-/*******************************************************************************
-**
-** Function        userial_vendor_init
-**
-** Description     Initialize userial vendor-specific control block
-**
-** Returns         None
-**
-*******************************************************************************/
-void userial_vendor_init(void)
-{
-    vnd_userial.fd = -1;
-    vnd_userial.dev_id = 0;
-    snprintf(vnd_userial.port_name, VND_PORT_NAME_MAXLEN, "%s", \
-            BLUETOOTH_UART_DEVICE_PORT);
-}
-
-/*******************************************************************************
-**
-** Function        userial_vendor_open
-**
-** Description     Open the serial port with the given configuration
-**
-** Returns         device fd
-**
-*******************************************************************************/
-int userial_vendor_open(void)
-{
-	ALOGI("userial vendor open: opening %s", vnd_userial.port_name);
-
-	if ((vnd_userial.fd = open(vnd_userial.port_name, O_RDWR)) == -1)
-	{
-	    ALOGE("userial vendor open: unable to open %s: %s", vnd_userial.port_name, strerror(errno));
-	    return -1;
-	}
-
-	ALOGI("device fd = %d open", vnd_userial.fd);
-
-	return vnd_userial.fd;
-}
-
-/*******************************************************************************
-**
-** Function        userial_vendor_close
-**
-** Description     Conduct vendor-specific close work
-**
-** Returns         None
-**
-*******************************************************************************/
-void userial_vendor_close(void)
-{
-    int result;
-
-    if (vnd_userial.fd == -1)
-        return;
-
-    ALOGI("device fd = %d close", vnd_userial.fd);
-
-    if ((result = close(vnd_userial.fd)) < 0)
-        ALOGE( "close(fd:%d) FAILED result:%d", vnd_userial.fd, result);
-
-    vnd_userial.fd = -1;
-}
-
 /** Closes the interface */
 static void cleanup( void )
 {
     BTVNDDBG("cleanup");
-	property_set("bluetooth.btdriver", "false");
-	ms_delay(200);
-    upio_set_bluetooth_power(UPIO_BT_POWER_OFF);
+
     upio_cleanup();
+
     bt_vendor_cbacks = NULL;
 }
 
