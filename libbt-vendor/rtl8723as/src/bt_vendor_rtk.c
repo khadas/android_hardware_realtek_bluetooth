@@ -28,6 +28,7 @@
 
 #include <fcntl.h>
 #include <errno.h>
+#include <time.h>
 #include <utils/Log.h>
 #include "bt_vendor_rtk.h"
 #include "upio.h"
@@ -62,6 +63,32 @@ bt_vendor_callbacks_t *bt_vendor_cbacks = NULL;
 uint8_t vnd_local_bd_addr[6]={0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 static vnd_userial_cb_t vnd_userial;
 
+/*******************************************************************************
+**
+** Function        ms_delay
+**
+** Description     sleep unconditionally for timeout milliseconds
+**
+** Returns         None
+**
+*******************************************************************************/
+void ms_delay (uint32_t timeout)
+{
+    struct timespec delay;
+    int err;
+
+    if (timeout == 0)
+        return;
+
+    delay.tv_sec = timeout / 1000;
+    delay.tv_nsec = 1000 * 1000 * (timeout%1000);
+
+    /* [u]sleep can't be used because it uses SIGALRM */
+    do {
+        err = nanosleep(&delay, &delay);
+    } while (err < 0 && errno ==EINTR);
+}
+
 /*****************************************************************************
 **
 **   BLUETOOTH VENDOR INTERFACE LIBRARY FUNCTIONS
@@ -81,7 +108,9 @@ static int init(const bt_vendor_callbacks_t* p_cb, unsigned char *local_bdaddr)
     userial_vendor_init();
     upio_init();
     upio_set_bluetooth_power(UPIO_BT_POWER_ON);
-
+    ms_delay(200);
+	property_set("bluetooth.btdriver", "true");
+    ms_delay(200);
     /* store reference to user callbacks */
     bt_vendor_cbacks = (bt_vendor_callbacks_t *) p_cb;
 
@@ -123,6 +152,8 @@ static int op(bt_vendor_opcode_t opcode, void *param)
             {
                 int (*fd_array)[] = (int (*)[]) param;
                 int fd, idx;
+                int i;
+                for(i = 0;i < 10;i++) {
                 fd = userial_vendor_open();
                 if (fd != -1)
                 {
@@ -130,7 +161,11 @@ static int op(bt_vendor_opcode_t opcode, void *param)
                         (*fd_array)[idx] = fd;
 
                     retval = 1;
+					break;
                 }
+        		ALOGE("open failed try again %d!", i);
+                ms_delay(100);
+				}
                 /* retval contains numbers of open fd of HCI channels */
             }
             break;
@@ -231,6 +266,8 @@ void userial_vendor_close(void)
 static void cleanup( void )
 {
     BTVNDDBG("cleanup");
+	property_set("bluetooth.btdriver", "false");
+	ms_delay(200);
     upio_set_bluetooth_power(UPIO_BT_POWER_OFF);
     upio_cleanup();
     bt_vendor_cbacks = NULL;
