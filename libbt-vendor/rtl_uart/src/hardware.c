@@ -52,7 +52,7 @@
 /******************************************************************************
 **  Constants & Macros
 ******************************************************************************/
-#define RTK_VERSION "3.0"
+#define RTK_VERSION "3.3"
 
 #ifndef BTHW_DBG
 #define BTHW_DBG FALSE
@@ -64,6 +64,9 @@
 #define BTHWDBG(param, ...) {}
 #endif
 
+#ifndef USE_CONTROLLER_BDADDR
+#define USE_CONTROLLER_BDADDR TRUE
+#endif
 
 #define HCI_UART_H4 0
 #define HCI_UART_3WIRE  2
@@ -256,11 +259,13 @@ struct rtk_epatch_entry{
     uint16_t chipID;
     uint16_t patch_length;
     uint32_t start_offset;
+    uint32_t svn_version;
+    uint32_t coex_version;
 } __attribute__ ((packed));
 
 struct rtk_epatch{
     uint8_t signature[8];
-    uint32_t fm_version;
+    uint32_t fw_version;
     uint16_t number_of_total_patch;
     struct rtk_epatch_entry entry[0];
 } __attribute__ ((packed));
@@ -552,17 +557,17 @@ static const char *get_firmware_name()
     return firmware_file_name;
 }
 
-uint32_t rtk_parse_config_file(unsigned char* config_buf, size_t filelen, char bt_addr[6])
+uint32_t rtk_parse_config_file(unsigned char** config_buf, size_t* filelen, char bt_addr[6])
 {
-    struct rtk_bt_vendor_config* config = (struct rtk_bt_vendor_config*) config_buf;
+    struct rtk_bt_vendor_config* config = (struct rtk_bt_vendor_config*) *config_buf;
     uint16_t config_len = config->data_len, temp = 0;
     struct rtk_bt_vendor_config_entry* entry = config->entry;
     unsigned int i = 0;
     uint32_t baudrate = 0;
+    uint32_t config_has_bdaddr = 0;
 
 
-
-    bt_addr[0] = 0; //reset bd addr byte 0 to zero
+    //bt_addr[0] = 0; //reset bd addr byte 0 to zero
 
     if (config->signature != RTK_VENDOR_CONFIG_MAGIC)
     {
@@ -570,9 +575,9 @@ uint32_t rtk_parse_config_file(unsigned char* config_buf, size_t filelen, char b
         return 0;
     }
 
-    if (config_len != filelen - sizeof(struct rtk_bt_vendor_config))
+    if (config_len != *filelen - sizeof(struct rtk_bt_vendor_config))
     {
-        ALOGE("config len(%x) is not right(%x)", config_len, filelen-sizeof(struct rtk_bt_vendor_config));
+        ALOGE("config len(%x) is not right(%x)", config_len, *filelen-sizeof(struct rtk_bt_vendor_config));
         return 0;
     }
 
@@ -581,16 +586,17 @@ uint32_t rtk_parse_config_file(unsigned char* config_buf, size_t filelen, char b
 
         switch(entry->offset)
         {
-            //20130621 morgan modify for bt_addr cannot change issue
-            /*
+		#if (USE_CONTROLLER_BDADDR == FALSE)
             case 0x3c:
             {
+                config_has_bdaddr = 1;
                 int j=0;
                 for (j=0; j<entry->entry_len; j++)
-                    entry->entry_data[j] = bt_addr[entry->entry_len - 1 - j];
+                entry->entry_data[j] = bt_addr[entry->entry_len - 1- j];
+                ALOGI("rtk_parse_config_file: DO NOT USE_CONTROLLER_BDADDR, config has bdaddr");
                 break;
             }
-            */
+#endif
             case 0xc:
             {
                 baudrate = *(uint32_t*)entry->entry_data;
@@ -614,6 +620,23 @@ uint32_t rtk_parse_config_file(unsigned char* config_buf, size_t filelen, char b
         i += temp;
         entry = (struct rtk_bt_vendor_config_entry*)((uint8_t*)entry + temp);
     }
+#if(USE_CONTROLLER_BDADDR == FALSE)
+    if(!config_has_bdaddr){
+        ALOGI("rtk_parse_config_file: DO NOT USE_CONTROLLER_BDADDR, config has no bdaddr");
+        *config_buf = realloc(*config_buf, *filelen+9);
+        ((struct rtk_bt_vendor_config*)*config_buf)->data_len += 9;
+        *((char*)*config_buf + *filelen) = 0x3c;
+        *((char*)*config_buf + *filelen + 1) = 0x00;
+        *((char*)*config_buf + *filelen + 2) = 0x06;
+        *((char*)*config_buf + *filelen + 3) = bt_addr[5];
+        *((char*)*config_buf + *filelen + 4) = bt_addr[4];
+        *((char*)*config_buf + *filelen + 5) = bt_addr[3];
+        *((char*)*config_buf + *filelen + 6) = bt_addr[2];
+        *((char*)*config_buf + *filelen + 7) = bt_addr[1];
+        *((char*)*config_buf + *filelen + 8) = bt_addr[0];
+        *filelen += 9;
+    }
+#endif
 
 
     return baudrate;
@@ -764,7 +787,7 @@ uint32_t rtk_get_bt_config(unsigned char** config_buf,
         return -1;
     }
 
-    *config_baud_rate = rtk_parse_config_file(*config_buf, filelen, bt_addr);
+    *config_baud_rate = rtk_parse_config_file(config_buf, &filelen, vnd_local_bd_addr);
     ALOGI("Get config baud rate from config file:%x", *config_baud_rate);
 
     close(fd);
@@ -1240,52 +1263,46 @@ void hw_config_cback(void *p_mem)
                         {
                             ALOGE("Check Extension_Section_SIGNATURE error! do not download fw");
                             need_download_fw = 0;
-                        }
-                        else
-                        {
+		} else {
                             uint8_t *temp;
                             temp = epatch_buf+buf_len-config_len-5;
                             do{
-                                if(*temp == 0x00)
-                                {
+                                if(*temp == 0x00) {
                                     patch_lmp.opcode = *temp;
+				ALOGI("opcode = 0x%x",patch_lmp.opcode);
                                     patch_lmp.length = *(temp-1);
+				ALOGI("length = 0x%x",patch_lmp.length);
                                     if ((patch_lmp.data = malloc(patch_lmp.length)))
                                     {
-                                        memcpy(patch_lmp.data,temp-2,patch_lmp.length);
-                                    }
-                                    ALOGI("opcode = 0x%x",patch_lmp.opcode);
-                                    ALOGI("length = 0x%x",patch_lmp.length);
-                                    ALOGI("data = 0x%x",*(patch_lmp.data));
+                                        int k;
+					for(k = 0; k < patch_lmp.length; k++){
+						*(patch_lmp.data+k) = *(temp-2-k);
+						ALOGI("data = 0x%x",*(patch_lmp.data+k));
+					}
+				   }
                                     break;
                                 }
                                 temp -= *(temp-1)+2;
                             }while(*temp != 0xFF);
 
-                            if(lmp_version != project_id[*(patch_lmp.data)])
-                            {
+                            if(lmp_version != project_id[*(patch_lmp.data)]) {
                                 ALOGE("lmp_version is %x, project_id is %x, does not match!!!",lmp_version,project_id[*(patch_lmp.data)]);
                                 need_download_fw = 0;
                             }
                             else
                             {
                                 ALOGI("lmp_version is %x, project_id is %x, match!",lmp_version, project_id[*(patch_lmp.data)]);
-
-                                if(memcmp(epatch_buf, RTK_EPATCH_SIGNATURE, 8) != 0)
-                                {
+                                if(memcmp(epatch_buf, RTK_EPATCH_SIGNATURE, 8) != 0) {
                                     ALOGI("Check signature error!");
                                     need_download_fw = 0;
-                                }
-                                else
-                                {
+                                } else  {
                                     int i = 0;
                                     epatch_info = (struct rtk_epatch*)epatch_buf;
-                                    ALOGI("fm_version = 0x%x",epatch_info->fm_version);
+                                    ALOGI("fw_version = 0x%x",epatch_info->fw_version);
                                     ALOGI("number_of_total_patch = %d",epatch_info->number_of_total_patch);
 
                                     //get right epatch entry
-                                    for(i; i<epatch_info->number_of_total_patch; i++)
-                                    {
+                                    for(i; i<epatch_info->number_of_total_patch; i++){
                                         if(*(uint16_t*)(epatch_buf+14+2*i) == gEVersion + 1)
                                         {
                                             current_entry.chipID = gEVersion + 1;
@@ -1371,11 +1388,16 @@ void hw_config_cback(void *p_mem)
                                     if (!(buf = malloc(buf_len))) {
                                         ALOGE("Can't alloc memory for multi fw&config, errno:%d", errno);
                                         buf_len = -1;
-                                    }
-                                    else
-                                    {
+				     } else {
                                         memcpy(buf,&epatch_buf[current_entry.start_offset],current_entry.patch_length);
-                                        memcpy(&buf[current_entry.patch_length-4],&epatch_info->fm_version,4);
+                                        memcpy(&buf[current_entry.patch_length-4],&epatch_info->fw_version,4);
+					memcpy(&current_entry.svn_version,&buf[current_entry.patch_length-8],4);
+					memcpy(&current_entry.coex_version,&buf[current_entry.patch_length-12],4);
+					ALOGI("fw svn_version = %05d",current_entry.svn_version);
+					ALOGI("BTCOEX20%06d-%04x",
+						((current_entry.coex_version >> 16) & 0x7ff) + ((current_entry.coex_version >> 27) * 10000),
+						(current_entry.coex_version & 0xffff)); 
+
                                     }
                                     free(epatch_buf);
                                     epatch_buf = NULL;
@@ -1678,8 +1700,10 @@ void hw_lpm_ctrl_cback(void *p_mem)
 *******************************************************************************/
 void hw_config_start(void)
 {
+#if 0
     HC_BT_HDR  *p_buf = NULL;
     uint8_t     *p;
+#endif
 
     hw_cfg_cb.state = 0;
     hw_cfg_cb.fw_fd = -1;
@@ -1690,6 +1714,7 @@ void hw_config_start(void)
 
     if (bt_vendor_cbacks)
     {
+#if 0
         p_buf = (HC_BT_HDR *) bt_vendor_cbacks->alloc(BT_HC_HDR_SIZE + \
                                                        2);
     }
@@ -1704,11 +1729,15 @@ void hw_config_start(void)
         p = (uint8_t *) (p_buf + 1);
         UINT16_TO_STREAM(p, HCI_VSC_H5_INIT);
 
+#endif
         hw_cfg_cb.state = HW_CFG_START;
         ALOGI("hw_config_start:Realtek version %s \n",RTK_VERSION);
         //bt_vendor_cbacks->xmit_cb(HCI_VSC_H5_INIT, p_buf, hw_config_cback);
-        bt_vendor_cbacks->xmit_cb(HCI_VSC_H5_INIT, p_buf, rtk_get_lmp);
+      //  bt_vendor_cbacks->xmit_cb(HCI_VSC_H5_INIT, p_buf, rtk_get_lmp);
+        bt_vendor_cbacks->xmit_cb(HCI_VSC_H5_INIT, NULL, rtk_get_lmp);
+        ALOGI("hw_config_start:back %s \n",RTK_VERSION);
     }
+#if 0
     else
     {
         if (bt_vendor_cbacks)
@@ -1717,6 +1746,7 @@ void hw_config_start(void)
             bt_vendor_cbacks->fwcfg_cb(BT_VND_OP_RESULT_FAIL);
         }
     }
+#endif
 }
 
 
