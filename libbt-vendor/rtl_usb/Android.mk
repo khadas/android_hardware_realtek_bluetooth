@@ -1,7 +1,8 @@
 LOCAL_PATH := $(call my-dir)
 
 ifneq ($(BOARD_HAVE_BLUETOOTH_RTK),)
-ifeq ($(BLUETOOTH_MODULE),rtl8723au)
+#ifeq ($(BLUETOOTH_MODULE),rtl8723au)
+ifneq ($(filter rtl8723au rtl8723bu, $(BLUETOOTH_MODULE)),)
 include $(CLEAR_VARS)
 
 BDROID_DIR := $(TOP_DIR)external/bluetooth/bluedroid
