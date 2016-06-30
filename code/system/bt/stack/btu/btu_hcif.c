@@ -349,7 +349,7 @@ void btu_hcif_process_event (UNUSED_ATTR UINT8 controller_id, BT_HDR *p_msg)
 #ifdef BLUETOOTH_RTK_API
         case HCI_SL_PAGE_RESPONSE_TO_EVT:
         case HCI_CONNLESS_SL_BC_TO_EVT:
-                rtkbt_api_Hook(RTKBT_HOOK_RECEIVE_EVENT,(void *)p_msg,hci_evt_len);
+                rtkbt_api_Hook(RTKBT_HOOK_RECEIVE_HCI_VENDOR_EVENT,(void *)p_msg,hci_evt_len);
         break;
 #endif
     }

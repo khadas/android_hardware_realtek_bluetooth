@@ -312,14 +312,32 @@ static uint8_t get_last_features_classic_index(void) {
 
 static const bt_device_features_t *get_features_ble(void) {
   assert(readable);
-  assert(ble_supported);
-  return &features_ble;
+#ifdef BLUETOOTH_RTK
+        if(ble_supported){
+          assert(ble_supported);
+          return &features_ble;
+        } else {
+          return NULL;
+        }
+#else
+        assert(ble_supported);
+        return &features_ble;
+#endif
 }
 
 static const uint8_t *get_ble_supported_states(void) {
   assert(readable);
-  assert(ble_supported);
-  return ble_supported_states;
+#ifdef BLUETOOTH_RTK
+      if(ble_supported){
+        assert(ble_supported);
+        return ble_supported_states;
+      } else {
+        return NULL;
+      }
+#else
+      assert(ble_supported);
+      return ble_supported_states;
+#endif
 }
 
 static bool supports_simple_pairing(void) {
@@ -392,8 +410,18 @@ static uint16_t get_acl_data_size_classic(void) {
 
 static uint16_t get_acl_data_size_ble(void) {
   assert(readable);
-  assert(ble_supported);
-  return acl_data_size_ble;
+#ifdef BLUETOOTH_RTK
+    if(ble_supported){
+    assert(ble_supported);
+    return acl_data_size_ble;
+    } else {
+      return 0;
+    }
+#else
+    assert(ble_supported);
+    return acl_data_size_ble;
+#endif
+
 }
 
 static uint16_t get_acl_packet_size_classic(void) {
@@ -408,8 +436,17 @@ static uint16_t get_acl_packet_size_ble(void) {
 
 static uint16_t get_ble_suggested_default_data_length(void) {
   assert(readable);
+#ifdef BLUETOOTH_RTK
+  if(ble_supported){
+    assert(ble_supported);
+    return ble_suggested_default_data_length;
+  } else {
+    return 0;
+  }
+#else
   assert(ble_supported);
   return ble_suggested_default_data_length;
+#endif
 }
 
 static uint16_t get_acl_buffer_count_classic(void) {
@@ -425,20 +462,42 @@ static uint8_t get_acl_buffer_count_ble(void) {
 
 static uint8_t get_ble_white_list_size(void) {
   assert(readable);
+#ifdef BLUETOOTH_RTK
+  if(ble_supported){
+    assert(ble_supported);
+    return ble_white_list_size;
+  } else {
+    return 0;
+  }
+#else
   assert(ble_supported);
   return ble_white_list_size;
+#endif
 }
 
 static uint8_t get_ble_resolving_list_max_size(void) {
   assert(readable);
+#ifdef BLUETOOTH_RTK
+  if(ble_supported){
+    assert(ble_supported);
+    return ble_resolving_list_max_size;
+  } else {
+    return 0;
+  }
+#else
   assert(ble_supported);
   return ble_resolving_list_max_size;
+#endif
 }
 
 static void set_ble_resolving_list_max_size(int resolving_list_max_size) {
   assert(readable);
+#ifdef BLUETOOTH_RTK
+  ble_resolving_list_max_size = resolving_list_max_size;
+#else
   assert(ble_supported);
   ble_resolving_list_max_size = resolving_list_max_size;
+#endif
 }
 
 static const controller_t interface = {

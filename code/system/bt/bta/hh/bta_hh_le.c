@@ -918,7 +918,7 @@ void bta_hh_le_open_cmpl(tBTA_HH_DEV_CB *p_cb)
         bta_hh_le_hid_report_dbg(p_cb);
 #endif
 #ifdef BLUETOOTH_RTK_API
-        rtkbt_api_Hook(RTKBT_HOOK_CFG_MTU,(void *) p_cb,sizeof(tBTA_HH_DEV_CB));
+        rtkbt_api_Hook(RTKBT_HOOK_HH_LE_OPEN_CMPL,(void *) p_cb,sizeof(tBTA_HH_DEV_CB));
 #endif
         bta_hh_le_register_input_notif(p_cb, 0, p_cb->mode, TRUE);
         bta_hh_sm_execute(p_cb, BTA_HH_OPEN_CMPL_EVT, NULL);
@@ -2840,9 +2840,7 @@ void bta_hh_le_write_rpt(tBTA_HH_DEV_CB *p_cb, UINT8 srvc_inst,
     if (p_rpt == NULL)
     {
         APPL_TRACE_ERROR("bta_hh_le_write_rpt: no matching report");
-#ifndef BLUETOOTH_RTK
         GKI_freebuf(p_buf);
-#endif
         return;
     }
 
@@ -2859,6 +2857,9 @@ void bta_hh_le_write_rpt(tBTA_HH_DEV_CB *p_cb, UINT8 srvc_inst,
                              p_buf->len,
                              p_value,
                              BTA_GATT_AUTH_REQ_NONE);
+#ifdef BLUETOOTH_RTK
+    GKI_freebuf(p_buf);
+#endif
 
 }
 
@@ -3221,7 +3222,7 @@ static void bta_hh_gattc_callback(tBTA_GATTC_EVT event, tBTA_GATTC *p_data)
 #ifdef BLUETOOTH_RTK
         case BTA_GATTC_CFG_MTU_EVT:
 #ifdef BLUETOOTH_RTK_API
-             rtkbt_api_Hook(RTKBT_HOOK_CFG_MTU,(void *) p_data,sizeof(tBTA_GATTC_CFG_MTU));
+             rtkbt_api_Hook(RTKBT_HOOK_GATTC_CFG_MTU_EVT,(void *) p_data,sizeof(tBTA_GATTC_CFG_MTU));
 #endif
             break;
 #endif

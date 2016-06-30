@@ -86,14 +86,12 @@ static bool get_trace_config_enabled(void) {
 }
 
 #ifdef BLUETOOTH_RTK
-
 static int get_btsnoop_heartbeat_log(void) {
   return config_get_int(config, CONFIG_DEFAULT_SECTION, BTSNOOP_HEARTBEAT_LOG, 1);
 }
 static const char* get_btsnoop_bqb_log(void) {
   return config_get_string(config, CONFIG_DEFAULT_SECTION, BTSNOOP_BQB_LOG, "0");
 }
-
 #endif
 
 static config_t *get_all(void) {

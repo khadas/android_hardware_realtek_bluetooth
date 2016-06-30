@@ -1,5 +1,5 @@
 #define LOG_TAG "RTKBT_API"
-
+#ifdef BLUETOOTH_RTK_API
 #include <string.h>
 #include <dlfcn.h>
 #include <stdlib.h>
@@ -36,7 +36,7 @@ int rtkbt_api_SetUipcPath(int ch_id, char * path)
 {
     if((ch_id < UIPC_CH_ID_RTKBT_CHANNEL_1)||(ch_id > UIPC_CH_ID_RTKBT_CHANNEL_6))
     {
-        //ALOGE("%s ch_id(%d) is out of range,UIPC_CH_ID_RTKBT_CHANNEL_1=%d UIPC_CH_ID_RTKBT_CHANNEL_6=%d\n", __FUNCTION__, ch_id, UIPC_CH_ID_RTKBT_CHANNEL_1, UIPC_CH_ID_RTKBT_CHANNEL_6);
+        ALOGE("%s ch_id(%d) is out of range,UIPC_CH_ID_RTKBT_CHANNEL_1=%d UIPC_CH_ID_RTKBT_CHANNEL_6=%d\n", __FUNCTION__, ch_id, UIPC_CH_ID_RTKBT_CHANNEL_1, UIPC_CH_ID_RTKBT_CHANNEL_6);
         return -1;
     }
     char * buffer = malloc(strlen(path)+1);
@@ -389,6 +389,7 @@ static bt_status_t init(rtkbt_callbacks_t* callbacks)
     rtkbt_callbacks = callbacks;
     UIPC_Init(0);
     loadplugins(&rtkbt_api_callbacks);
+    rtkbt_api_Hook(RTKBT_HOOK_ENABLE_BT_COMPLETE, (void *)BT_STATE_ON, 0);
     return BT_STATUS_SUCCESS;
 }
 static void cleanup()
@@ -421,4 +422,4 @@ const rtkbt_interface_t *btif_rtkbt_get_interface(void)
     BTIF_TRACE_API("%s", __FUNCTION__);
     return &bt_rtkbt_interface;
 }
-
+#endif

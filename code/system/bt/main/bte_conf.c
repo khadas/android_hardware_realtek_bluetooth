@@ -50,6 +50,10 @@ void bte_load_rtkbt_conf(const char *path)
     }
     memset(bt_hci_device_node, 0, sizeof(bt_hci_device_node));
     strlcpy(bt_hci_device_node, config_get_string(config, CONFIG_DEFAULT_SECTION, "BtDeviceNode","/dev/rtk_btusb"), sizeof(bt_hci_device_node));
+    strlcpy(btif_local_name_from_cfg, config_get_string(config, CONFIG_DEFAULT_SECTION, "Name", ""), sizeof(btif_local_name_from_cfg) - 1);
+    dev_class_from_cfg[0] = config_get_int(config, CONFIG_DEFAULT_SECTION, "DevClassServiceClass", 0x1a);
+    dev_class_from_cfg[1] = config_get_int(config, CONFIG_DEFAULT_SECTION, "DevClassMajorClass", 0x01);
+    dev_class_from_cfg[2] = config_get_int(config, CONFIG_DEFAULT_SECTION, "DevClassMinorClass", 0x1c);
     config_free(config);
 }
 #endif

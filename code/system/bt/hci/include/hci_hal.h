@@ -28,9 +28,11 @@ typedef enum {
   DATA_TYPE_COMMAND = 1,
   DATA_TYPE_ACL     = 2,
   DATA_TYPE_SCO     = 3,
-  DATA_TYPE_EVENT   = 4,
 #ifdef BLUETOOTH_RTK
-  DATA_TYPE_H5      = 5
+  DATA_TYPE_EVENT   = 4,
+  DATA_TYPE_H5  =  5
+#else
+  DATA_TYPE_EVENT   = 4
 #endif
 } serial_data_type_t;
 

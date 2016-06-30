@@ -1,5 +1,5 @@
 #define LOG_TAG "RTKBT_API"
-
+#ifdef BLUETOOTH_RTK_API
 #include <string.h>
 #include <hardware/bluetooth.h>
 #include "hardware/bt_rtkbt.h"
@@ -133,6 +133,11 @@ static int rtkbt_conf_parse_config(struct config_entry **items, char *content)
                     *p++ = 0;
                     item = line;
                     val = p;
+                    if((item[0]==0)||(val[0]==0))
+                    {
+                        ALOGI("rtkbt_conf_parse_config ignore(item:%s val:%s)\n", item[0]?item:"(null)", val[0]?val:"(null)");
+                        break;
+                    }
                     ALOGI("rtkbt_conf_parse_config Find Item[%s:%s=%s]\n", group, item, val);
                     entry = malloc(sizeof(struct config_entry));
                     if(entry)
@@ -314,4 +319,5 @@ char * rtkbt_api_GetConfig(int id, char * group, char * item)
     }
     return NULL;
 }
+#endif
 

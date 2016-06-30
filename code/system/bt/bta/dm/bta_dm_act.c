@@ -1862,7 +1862,13 @@ void bta_dm_search_cmpl (tBTA_DM_MSG *p_data)
         bta_dm_di_disc_cmpl(p_data);
     else
 #ifdef BLUETOOTH_RTK
+    {
         bta_dm_search_cb.p_search_cback(BTA_DM_DISC_CMPL_EVT, &p_data->disc_result.result);
+        if (bta_dm_search_cb.gatt_disc_active && p_data->disc_result.result.disc_res.result != BTA_SUCCESS)
+        {
+            bta_dm_cancel_gatt_discovery(bta_dm_search_cb.peer_bdaddr);
+        }
+    }
 #else
         bta_dm_search_cb.p_search_cback(BTA_DM_DISC_CMPL_EVT, NULL);
 #endif

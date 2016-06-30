@@ -138,7 +138,29 @@ static int uhid_event(btif_hh_device_t *p_dev)
     case UHID_FEATURE_ANSWER:
         APPL_TRACE_DEBUG("UHID_FEATURE_ANSWER from uhid-dev\n");
         break;
+#ifdef BLUETOOTH_RTK
+    case UHID_SET_REPORT:
+        if (ret < (ssize_t)(sizeof(ev.type) + sizeof(ev.u.set_report))) {
+            APPL_TRACE_ERROR("%s: Invalid size read from uhid-dev: %zd < %zu",
+                             __FUNCTION__, ret,
+                             sizeof(ev.type) + sizeof(ev.u.output));
+            return -EFAULT;
+        }
 
+        APPL_TRACE_DEBUG("UHID_SET_REPORT: Report type = %d, report_size = %d"
+                            ,ev.u.set_report.rtype, ev.u.set_report.size);
+        //Send SET_REPORT with feature report if the report type in output event is FEATURE
+        if(ev.u.set_report.rtype == UHID_FEATURE_REPORT)
+            btif_hh_setreport(p_dev, BTHH_FEATURE_REPORT,
+                              ev.u.set_report.size, ev.u.set_report.data);
+        else if(ev.u.set_report.rtype == UHID_OUTPUT_REPORT)
+            btif_hh_setreport(p_dev, BTHH_OUTPUT_REPORT,
+                              ev.u.set_report.size, ev.u.set_report.data);
+        else
+            btif_hh_setreport(p_dev, BTHH_INPUT_REPORT,
+                              ev.u.set_report.size, ev.u.set_report.data);
+        break;
+#endif
     default:
         APPL_TRACE_DEBUG("Invalid event from uhid-dev: %u\n", ev.type);
     }

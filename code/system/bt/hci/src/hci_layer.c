@@ -716,13 +716,14 @@ static bool filter_incoming_event(BT_HDR *packet) {
   uint8_t event_code;
   command_opcode_t opcode;
 
+
   STREAM_TO_UINT8(event_code, stream);
   STREAM_SKIP_UINT8(stream); // Skip the parameter total length field
 
   if (event_code == HCI_COMMAND_COMPLETE_EVT) {
     STREAM_TO_UINT8(command_credits, stream);
 #ifdef BLUETOOTH_RTK
-    if(command_credits >= 0)
+    if(command_credits > 0)
         command_credits = 1;
 #endif
     STREAM_TO_UINT16(opcode, stream);
@@ -730,7 +731,7 @@ static bool filter_incoming_event(BT_HDR *packet) {
     wait_entry = get_waiting_command(opcode);
 #ifdef BLUETOOTH_RTK
   if(!bluetooth_rtk_h5_flag && wait_entry)
-    rtk_parse_manager->rtk_parse_internal_event_intercept(stream);
+    rtk_parse_manager->rtk_parse_internal_event_intercept(packet->data);
 #endif
     if (!wait_entry)
       LOG_WARN("%s command complete event with no matching command. opcode: 0x%x.", __func__, opcode);
@@ -745,7 +746,7 @@ static bool filter_incoming_event(BT_HDR *packet) {
     STREAM_TO_UINT8(status, stream);
     STREAM_TO_UINT8(command_credits, stream);
 #ifdef BLUETOOTH_RTK
-    if(command_credits >= 0)
+    if(command_credits > 0)
         command_credits = 1;
 #endif
     STREAM_TO_UINT16(opcode, stream);

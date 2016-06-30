@@ -184,8 +184,9 @@ enum {
     RTKBT_HOOK_BLE_HH_NOTIY,                // args: RTKBT_HOOK_BLE_HH_NOTIY_ARG   len:sizeof(RTKBT_HOOK_BLE_HH_NOTIY_ARG)
     RTKBT_HOOK_AUTOPAIR_VND_EVENT,          // args: NULL   len:0
     RTKBT_HOOK_LE_HID_WHITE_LIST_STATUS,    // args: RTKBT_HOOK_HID_STATUS_ARG   len:sizeof(RTKBT_HOOK_HID_STATUS_ARG)
-    RTKBT_HOOK_RECEIVE_EVENT,
-    RTKBT_HOOK_CFG_MTU,
+    RTKBT_HOOK_RECEIVE_HCI_VENDOR_EVENT,               // args: BT_HDR*    len:0
+    RTKBT_HOOK_HH_LE_OPEN_CMPL,             // args: tBTA_HH_DEV_CB *   len: sizeof(tBTA_HH_DEV_CB)
+    RTKBT_HOOK_GATTC_CFG_MTU_EVT,           // args: tBTA_GATTC_CFG_MTU* len: sizeof(tBTA_GATTC_CFG_MTU)
     RTKBT_HOOK_HEARTBEAT_EVENT_COMPLETE,
 };
 typedef struct{
@@ -270,11 +271,11 @@ static inline int rtkbt_api_str2hex(char * str, UINT8 * hex, int *len)
     for(i=0; i< size;i+=2)
     {
         if(isxdigit(str[i])&&isxdigit(str[i+1]))
-            hex[i/2] = (rtkbt_api_XDIGIT2INT(str[i])<<4)|rtkbt_api_XDIGIT2INT(str[i+1]);
+            hex[i>>1] = (rtkbt_api_XDIGIT2INT(str[i])<<4)|rtkbt_api_XDIGIT2INT(str[i+1]);
         else
             return -2;
     }
-    *len = i/2;
+    *len = i>>1;
     return 0;
 }
 

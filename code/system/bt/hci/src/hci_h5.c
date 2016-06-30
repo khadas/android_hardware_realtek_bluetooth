@@ -1,21 +1,37 @@
-/*****************************************************************************
-
-Copyright (c) Realtek Corporation. All rights reserved.
-
-Module Name:
-    hci_h5.c
-
-Abstract:
-    Contain HCI transport send/receive functions for UART H5 Interface.
-
-Major Change History:
-      When             Who       What
-    ---------------------------------------------------------------
-    2015-12-15      lamparten   modified
-
-Notes:
-       This is designed for UART H5 HCI Interface in Android 6.0.
-*****************************************************************************/
+/******************************************************************************
+ *
+ *  Copyright (C) 2016 Realtek Corporation.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at:
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
+/******************************************************************************
+*
+*	Module Name:
+*	    hci_h5.c
+*
+*	Abstract:
+*	    Contain HCI transport send/receive functions for UART H5 Interface.
+*
+*	Major Change History:
+*	      When             Who       What
+*	    ---------------------------------------------------------------
+*	    2015-12-15      lamparten   modified
+*
+*	Notes:
+*	      This is designed for UART H5 HCI Interface in Android 6.0.
+*
+******************************************************************************/
 
 
 
@@ -140,6 +156,8 @@ uint8_t h5_log_enable = 0;
 //HCI Command opcodes
 #define HCI_READ_BUFFER_SIZE        0x1005
 #define HCI_LE_READ_BUFFER_SIZE     0x2002
+
+
 
 #define PATCH_DATA_FIELD_MAX_SIZE     252
 #define READ_DATA_SIZE  16
@@ -317,6 +335,7 @@ static pthread_mutex_t h5_wakeup_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Num of allowed outstanding HCI CMD packets */
 volatile int num_hci_cmd_pkts = 1;
+
 /******************************************************************************
 **  Static variables
 ******************************************************************************/

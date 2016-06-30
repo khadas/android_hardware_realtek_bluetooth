@@ -519,16 +519,6 @@ static void bta_av_api_sink_enable(tBTA_AV_DATA *p_data)
                           A2D_SUPF_PLAYER, bta_av_cb.sdp_a2d_snk_handle);
             bta_sys_add_uuid(UUID_SERVCLASS_AUDIO_SINK);
         }
-#ifdef BLUETOOTH_RTK
-// when a2dp sink enable ,we will delete the a2dp source uuid
-
-        if (bta_av_cb.sdp_a2d_handle != 0)
-        {
-            SDP_DeleteRecord(bta_av_cb.sdp_a2d_handle);
-            bta_av_cb.sdp_a2d_handle = 0;
-            bta_sys_remove_uuid(UUID_SERVCLASS_AUDIO_SOURCE);
-        }
-#endif
     }
     else
     {
@@ -720,15 +710,6 @@ static void bta_av_api_register(tBTA_AV_DATA *p_data)
                                   A2D_SUPF_PLAYER, bta_av_cb.sdp_a2d_handle);
                 bta_sys_add_uuid(UUID_SERVCLASS_AUDIO_SOURCE);
 
-#ifdef BLUETOOTH_RTK
-#else
-#if (BTA_AV_SINK_INCLUDED == TRUE)
-                bta_av_cb.sdp_a2d_snk_handle = SDP_CreateRecord();
-                A2D_AddRecord(UUID_SERVCLASS_AUDIO_SINK, p_avk_service_name, NULL,
-                                  A2D_SUPF_PLAYER, bta_av_cb.sdp_a2d_snk_handle);
-                bta_sys_add_uuid(UUID_SERVCLASS_AUDIO_SINK);
-#endif
-#endif
                 /* start listening when A2DP is registered */
                 if (bta_av_cb.features & BTA_AV_FEAT_RCTG)
                     bta_av_rc_create(&bta_av_cb, AVCT_ACP, 0, BTA_AV_NUM_LINKS + 1);

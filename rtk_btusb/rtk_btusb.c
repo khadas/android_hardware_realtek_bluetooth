@@ -1006,7 +1006,7 @@ static ssize_t btchr_read(struct file *file_p,
 
         ret = wait_event_interruptible(btchr_read_wait, !is_queue_empty());
         if (ret < 0) {
-            RTKBT_ERR("%s: wait event is signaled %d", __func__, ret);
+            RTKBT_ERR("%s: wait event is signaled %zd", __func__, ret);
             break;
         }
 

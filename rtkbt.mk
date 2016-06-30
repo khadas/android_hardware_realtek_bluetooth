@@ -5,7 +5,7 @@ BOARD_HAVE_BLUETOOTH := true
 BOARD_HAVE_BLUETOOTH_RTK := true
 BOARD_HAVE_BLUETOOTH_RTK_COEX := true
 
-#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee rtkbtAutoPairService rtkbtAutoPairUIDemo AudioRecordWav
+BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee rtkbtAutoPairService rtkbtAutoPairUIDemo AudioRecordWav
 ifneq ($(BOARD_HAVE_BLUETOOTH_RTK_ADDON),)
 $(foreach item,$(BOARD_HAVE_BLUETOOTH_RTK_ADDON),$(call inherit-product,$(LOCAL_PATH)/addon/$(item)/addon.mk))
 endif
@@ -40,6 +40,7 @@ PRODUCT_COPY_FILES += \
 	$(LOCAL_PATH)/system/etc/permissions/android.hardware.bluetooth.xml:system/etc/permissions/android.hardware.bluetooth.xml \
 	$(LOCAL_PATH)/system/lib/hw/audio.vfremotebee.default.so:system/lib/hw/audio.vfremotebee.default.so \
 	$(LOCAL_PATH)/system/lib/hw/audio.vfremote.default.so:system/lib/hw/audio.vfremote.default.so \
+	$(LOCAL_PATH)/system/lib/rtkbt/heartbeat.so:system/lib/rtkbt/heartbeat.so \
 	$(LOCAL_PATH)/system/lib/rtkbt/3dd_service.so:system/lib/rtkbt/3dd_service.so \
 	$(LOCAL_PATH)/system/lib/rtkbt/autopair.so:system/lib/rtkbt/autopair.so \
 	$(LOCAL_PATH)/system/lib/rtkbt/test.so:system/lib/rtkbt/test.so \

@@ -1730,6 +1730,17 @@ static void btgattc_handle_event(uint16_t event, char* p_param)
 
         case BTIF_GATTC_SET_SCAN_PARAMS:
         {
+#ifdef BLUETOOTH_RTK
+            BTIF_TRACE_WARNING("BTIF_GATTC_SET_SCAN_PARAMS1(%08x/%08x)", p_cb->scan_window, p_cb->scan_interval);
+            if(p_cb->scan_window > 0x50){
+                p_cb->scan_interval = p_cb->scan_interval * 0x50 / p_cb->scan_window;
+                p_cb->scan_window = 0x50;
+            }
+            BTIF_TRACE_WARNING("BTIF_GATTC_SET_SCAN_PARAMS2(%08x/%08x)", p_cb->scan_window, p_cb->scan_interval);
+            if(p_cb->scan_interval < p_cb->scan_window*2)
+                p_cb->scan_interval = p_cb->scan_window*2;
+            BTIF_TRACE_WARNING("BTIF_GATTC_SET_SCAN_PARAMS3(%08x/%08x)", p_cb->scan_window, p_cb->scan_interval);
+#endif
             BTA_DmSetBleScanParams(p_cb->client_if, p_cb->scan_interval, p_cb->scan_window,
                                    BTM_BLE_SCAN_MODE_ACTI, bta_scan_param_setup_cb);
             break;
