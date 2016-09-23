@@ -118,7 +118,11 @@ struct rtk_bt_vendor_config{
 #define HCI_VENDOR_READ_LMP_VERISION 0x1001
 #define HCI_VENDOR_FORCE_RESET_AND_PATCHABLE 0xfc66
 #define HCI_VENDOR_RESET                       0x0C03
+#define HCI_VENDOR_ADD_WAKE_UP_DEVICE       0xfc7b
+#define HCI_VENDOR_REMOVE_WAKE_UP_DEVICE    0xfc7c
+#define HCI_VENDOR_CLEAR_POWERON_LIST       0xfc7d
 
+#define SET_WAKEUP_DEVICE_CONF      "/data/misc/bluedroid/rtkbt_wakeup_ble.conf"
 
 #define DRV_NORMAL_MODE 0
 #define DRV_MP_MODE 1
@@ -135,6 +139,7 @@ int mp_drv_mode = 0; /* 1 Mptool Fw; 0 Normal Fw */
 #define ROM_LMP_8723c               0x8703
 #define ROM_LMP_8822b               0x8822
 #define ROM_LMP_8723d               0x8723
+#define ROM_LMP_8821c               0x8821
 
 /* signature: Realtek */
 const uint8_t RTK_EPATCH_SIGNATURE[8] = {0x52,0x65,0x61,0x6C,0x74,0x65,0x63,0x68};
@@ -152,6 +157,7 @@ uint16_t project_id[] = {
     ROM_LMP_8723c,
     ROM_LMP_8822b,
     ROM_LMP_8723d,
+    ROM_LMP_8821c,
     ROM_LMP_NONE
 };
 struct rtk_eversion_evt {
@@ -164,6 +170,15 @@ struct rtk_reset_evt {
     uint8_t status;
 } __attribute__ ((packed));
 /*modified by lamparten 1020*/
+
+struct rtk_localversion_evt {
+    uint8_t status;
+    uint8_t hci_version;
+    uint16_t hci_revision;
+    uint8_t lmp_version;
+    uint16_t lmp_manufacture;
+    uint16_t lmp_subversion;
+} __attribute__ ((packed));
 
 struct rtk_epatch_entry {
     uint16_t chip_id;
