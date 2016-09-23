@@ -1,0 +1,11 @@
+device/asus/flo/ commit d87ec6ea16c0abad26c74ed7f10debf2f3b46d71
+device/asus/flo-kernel/ commit d001eb59fd2bece029e3dc59d05bf2d6285ebe56
+frameworks/base/ commit d5c5fc8ed92043347df2821ac0b9c5a37ddc1127
+hardware/libhardware/ commit 9595a0ff466864f3650e38f5e45ac4425a73da63
+kernel/msm/ commit 69694300dbc38a4566c0eebb909ee574c1bd3226
+packages/apps/Bluetooth/ commit bd2636dd81170159aa2961e60fbdb572332dd823
+system/bt/ commit 91bed769f3e3775ad7241eeb355709a65c19a469
+vendor/ commit a5412940e7a25fb07fd59773d5a0f7546d6eb022
+
+R1 update:
+vr_bee.so f5377687e8834c8bc5151078553324c1b77cb71d
