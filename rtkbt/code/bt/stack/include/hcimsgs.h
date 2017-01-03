@@ -781,23 +781,6 @@ extern BOOLEAN btsnd_hcic_ble_add_device_resolving_list (UINT8 addr_type_peer,
                                                                UINT8 irk_peer[HCIC_BLE_IRK_SIZE],
                                                                UINT8 irk_local[HCIC_BLE_IRK_SIZE]);
 
-#ifdef BLUETOOTH_RTK
-extern BOOLEAN btsnd_hcic_set_reserved_lt_addr (UINT8 lt_addr);
-
-extern BOOLEAN btsnd_hcic_delete_reserved_lt_addr(UINT8 lt_addr);
-
-extern BOOLEAN btsnd_hcic_write_sync_train_param (UINT8* p_data);
-#define HCIC_PARAM_SIZE_WRITE_SYNC_TRAIN_PARAM      9
-
-extern BOOLEAN btsnd_hcic_write_clb_data (UINT8* p_data, UINT8 len);
-#define HCIC_PARAM_SIZE_SET_CLB_DATA_EXCPT      3
-
-extern BOOLEAN btsnd_hcic_set_clb (UINT8* p_data);
-#define HCIC_PARAM_SIZE_SET_CONNLESS_SLBC       11
-
-extern BOOLEAN btsnd_hcic_start_sync_train (void);
-
-#endif
 extern BOOLEAN btsnd_hcic_ble_rm_device_resolving_list (UINT8 addr_type_peer,
                                                                 BD_ADDR bda_peer);
 

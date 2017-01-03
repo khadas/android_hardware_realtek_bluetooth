@@ -24,7 +24,7 @@
 // MINOR CLASS: TABLET
 #define BTA_DM_COD {0x1A, 0x01, 0x1C}
 
-#define BTA_GATT_DEBUG TRUE
+#define BTA_GATT_DEBUG FALSE
 
 
 #define HCI_MAX_SIMUL_CMDS (1)
@@ -49,17 +49,19 @@
 /*avdtp log define*/
 //#define AVDT_DEBUG TRUE
 /*BT log verbose*/
-#define BT_TRACE_VERBOSE FALSE
-/*GKI log define*/
-#define GKI_DEBUG FALSE
+#define BT_TRACE_VERBOSE TRUE
 /* BT trace messages*/
 #define BT_USE_TRACES  TRUE
 /*A2DP SINK ENABLE*/
 #define BTA_AV_SINK_INCLUDED TRUE
+#define BLE_LOCAL_PRIVACY_ENABLED FALSE
+#define USE_AUDIO_TRACK TRUE
 /*BT lib vendor log*/
 //#define BTVND_DBG TRUE
 /*page timeout */
 #define BTA_DM_PAGE_TIMEOUT 8192
 #define BTM_LOCAL_IO_CAPS_BLE   BTM_IO_CAP_KBDISP
 #define BT_HCI_DEVICE_NODE_MAX_LEN 512
+
+#define KERNEL_MISSING_CLOCK_BOOTTIME_ALARM TRUE
 #endif

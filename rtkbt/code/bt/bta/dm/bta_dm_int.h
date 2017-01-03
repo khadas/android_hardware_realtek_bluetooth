@@ -31,9 +31,6 @@
 #endif
 
 
-#ifdef BLUETOOTH_RTK
-extern UINT8 dev_class_from_cfg[3];
-#endif
 
 /*****************************************************************************
 **  Constants and data types
@@ -76,11 +73,9 @@ enum
 
     BTA_DM_API_SET_ENCRYPTION_EVT,
 
-#if (BTM_OOB_INCLUDED == TRUE)
     BTA_DM_API_LOC_OOB_EVT,
     BTA_DM_CI_IO_REQ_EVT,
     BTA_DM_CI_RMT_OOB_EVT,
-#endif /* BTM_OOB_INCLUDED */
 
 
 #if BLE_INCLUDED == TRUE
@@ -545,7 +540,7 @@ typedef struct
     UINT8                   inst_id;
     BOOLEAN                 is_scan_rsp;
     tBTA_BLE_AD_MASK        data_mask;
-    tBTA_BLE_ADV_DATA      *p_data;
+    tBTA_BLE_ADV_DATA       data;
 }tBTA_DM_API_BLE_MULTI_ADV_DATA;
 
 typedef struct
@@ -558,7 +553,7 @@ typedef struct
 {
     BT_HDR                  hdr;
     UINT32                  data_mask;
-    tBTA_BLE_ADV_DATA       *p_adv_cfg;
+    tBTA_BLE_ADV_DATA       adv_cfg;
     tBTA_SET_ADV_DATA_CMPL_CBACK    *p_adv_data_cback;
 }tBTA_DM_API_SET_ADV_CONFIG;
 
@@ -819,6 +814,7 @@ typedef struct
 } tBTA_DM_PEER_DEVICE;
 
 
+
 /* structure to store list of
   active connections */
 typedef struct
@@ -863,7 +859,7 @@ typedef struct
      * Keep three different timers for PARK, SNIFF and SUSPEND if TBFC is
      * supported.
      */
-    TIMER_LIST_ENT          timer[BTA_DM_PM_MODE_TIMER_MAX];
+    alarm_t *               timer[BTA_DM_PM_MODE_TIMER_MAX];
 
     UINT8                   srvc_id[BTA_DM_PM_MODE_TIMER_MAX];
     UINT8                   pm_action[BTA_DM_PM_MODE_TIMER_MAX];
@@ -893,7 +889,7 @@ typedef struct
 #endif
     UINT16                      state;
     BOOLEAN                     disabling;
-    TIMER_LIST_ENT              disable_timer;
+    alarm_t                     *disable_timer;
     UINT32                      wbt_sdp_handle;          /* WIDCOMM Extensions SDP record handle */
     UINT8                       wbt_scn;                 /* WIDCOMM Extensions SCN */
     UINT8                       num_master_only;
@@ -919,7 +915,6 @@ typedef struct
     BOOLEAN         just_works;     /* TRUE, if "Just Works" association model */
 #if ( BTA_EIR_CANNED_UUID_LIST != TRUE )
     /* store UUID list for EIR */
-    TIMER_LIST_ENT              app_ready_timer;
     UINT32                      eir_uuid[BTM_EIR_SERVICE_ARRAY_SIZE];
 #if (BTA_EIR_SERVER_NUM_CUSTOM_UUID > 0)
     tBT_UUID                    custom_uuid[BTA_EIR_SERVER_NUM_CUSTOM_UUID];
@@ -929,13 +924,9 @@ typedef struct
 
 
     tBTA_DM_ENCRYPT_CBACK      *p_encrypt_cback;
-    TIMER_LIST_ENT              switch_delay_timer;
+    alarm_t                    *switch_delay_timer;
 
 } tBTA_DM_CB;
-
-#ifndef BTA_DM_SDP_DB_SIZE
-#define BTA_DM_SDP_DB_SIZE 250
-#endif
 
 /* DM search control block */
 typedef struct
@@ -951,7 +942,7 @@ typedef struct
     BD_ADDR                peer_bdaddr;
     BOOLEAN                name_discover_done;
     BD_NAME                peer_name;
-    TIMER_LIST_ENT         search_timer;
+    alarm_t              * search_timer;
     UINT8                  service_index;
     tBTA_DM_MSG          * p_search_queue;   /* search or discover commands during search cancel stored here */
     BOOLEAN                wait_disc;
@@ -973,7 +964,7 @@ typedef struct
     UINT8 *                 p_ble_rawdata;
     UINT32                 ble_raw_size;
     UINT32                 ble_raw_used;
-    TIMER_LIST_ENT         gatt_close_timer; /* GATT channel close delay timer */
+    alarm_t              * gatt_close_timer; /* GATT channel close delay timer */
     BD_ADDR                pending_close_bda; /* pending GATT channel remote device address */
 #endif
 #endif
@@ -1112,6 +1103,7 @@ extern void bta_dm_search_sm_disable( void );
 
 extern void bta_dm_enable (tBTA_DM_MSG *p_data);
 extern void bta_dm_disable (tBTA_DM_MSG *p_data);
+extern void bta_dm_init_cb(void);
 extern void bta_dm_set_dev_name (tBTA_DM_MSG *p_data);
 extern void bta_dm_set_visibility (tBTA_DM_MSG *p_data);
 
@@ -1170,15 +1162,12 @@ extern void bta_dm_ble_get_energy_info(tBTA_DM_MSG *p_data);
 #ifdef BLUETOOTH_RTK
 extern void bta_dm_add_ble_device_extra_info(tBTA_DM_MSG *p_data);
 #endif
-
 #endif
 extern void bta_dm_set_encryption(tBTA_DM_MSG *p_data);
 extern void bta_dm_confirm(tBTA_DM_MSG *p_data);
-#if (BTM_OOB_INCLUDED == TRUE)
 extern void bta_dm_loc_oob(tBTA_DM_MSG *p_data);
 extern void bta_dm_ci_io_req_act(tBTA_DM_MSG *p_data);
 extern void bta_dm_ci_rmt_oob_act(tBTA_DM_MSG *p_data);
-#endif /* BTM_OOB_INCLUDED */
 
 extern void bta_dm_init_pm(void);
 extern void bta_dm_disable_pm(void);

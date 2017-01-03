@@ -1,14 +1,16 @@
-# this file is auto generated. 
-# RELEASE_TIME: 20160816 19:55:00
-# RTKBT_API_VERSION=2.1.1.0
+# RELEASE NAME: 20161229_TV_ANDROID_7.x
+# RTKBT_API_VERSION=3.1.1.0
 
 BOARD_HAVE_BLUETOOTH := true
 BOARD_HAVE_BLUETOOTH_RTK := true
 BOARD_HAVE_BLUETOOTH_RTK_COEX := true
 
-BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee rtkbtAutoPairService  AudioRecordWav
-
+#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee1 rtkbtAutoPairService rtkbtAutoPairUIDemo 
+#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee1 rtkbtAutoPairService rtkbtAutoPairUIDemo vr_bee1_hidraw_daemon
+#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee2 rtkbtAutoPairService rtkbtAutoPairUIDemo 
+#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee2 rtkbtAutoPairService rtkbtAutoPairUIDemo vr_bee2_hidraw_daemon
 BOARD_HAVE_BLUETOOTH_RTK_ADDON := basic
+
 ifneq ($(BOARD_HAVE_BLUETOOTH_RTK_ADDON),)
 $(foreach item,$(BOARD_HAVE_BLUETOOTH_RTK_ADDON),$(call inherit-product,$(LOCAL_PATH)/addon/$(item)/addon.mk))
 endif
@@ -39,7 +41,9 @@ PRODUCT_COPY_FILES += \
 	$(LOCAL_PATH)/system/etc/firmware/rtl8821a_fw:system/etc/firmware/rtl8821a_fw \
 	$(LOCAL_PATH)/system/etc/firmware/rtl8821as_config:system/etc/firmware/rtl8821as_config \
 	$(LOCAL_PATH)/system/etc/firmware/rtl8821as_fw:system/etc/firmware/rtl8821as_fw \
+	$(LOCAL_PATH)/system/etc/firmware/rtl8821c_config:system/etc/firmware/rtl8821c_config \
 	$(LOCAL_PATH)/system/etc/firmware/rtl8821c_fw:system/etc/firmware/rtl8821c_fw \
+	$(LOCAL_PATH)/system/etc/firmware/rtl8821cs_config:system/etc/firmware/rtl8821cs_config \
 	$(LOCAL_PATH)/system/etc/firmware/rtl8821cs_fw:system/etc/firmware/rtl8821cs_fw \
 	$(LOCAL_PATH)/system/etc/firmware/rtl8822b_config:system/etc/firmware/rtl8822b_config \
 	$(LOCAL_PATH)/system/etc/firmware/rtl8822b_fw:system/etc/firmware/rtl8822b_fw \
@@ -47,20 +51,14 @@ PRODUCT_COPY_FILES += \
 	$(LOCAL_PATH)/system/etc/firmware/rtl8822bs_fw:system/etc/firmware/rtl8822bs_fw \
 	$(LOCAL_PATH)/system/etc/permissions/android.hardware.bluetooth_le.xml:system/etc/permissions/android.hardware.bluetooth_le.xml \
 	$(LOCAL_PATH)/system/etc/permissions/android.hardware.bluetooth.xml:system/etc/permissions/android.hardware.bluetooth.xml \
-	$(LOCAL_PATH)/system/lib/hw/audio.beesbc.default.so:system/lib/hw/audio.beesbc.default.so \
-	$(LOCAL_PATH)/system/lib/hw/audio.vfremotebee.default.so:system/lib/hw/audio.vfremotebee.default.so \
-	$(LOCAL_PATH)/system/lib/hw/audio.vfremote.default.so:system/lib/hw/audio.vfremote.default.so \
+	$(LOCAL_PATH)/system/lib/hw/audio.vr_bee_hidraw.default.so:system/lib/hw/audio.vr_bee_hidraw.default.so \
 	$(LOCAL_PATH)/system/lib/rtkbt/3dd_service.so:system/lib/rtkbt/3dd_service.so \
 	$(LOCAL_PATH)/system/lib/rtkbt/autopair_huawei.so:system/lib/rtkbt/autopair_huawei.so \
 	$(LOCAL_PATH)/system/lib/rtkbt/autopair.so:system/lib/rtkbt/autopair.so \
 	$(LOCAL_PATH)/system/lib/rtkbt/autopair_stack.so:system/lib/rtkbt/autopair_stack.so \
 	$(LOCAL_PATH)/system/lib/rtkbt/heartbeat.so:system/lib/rtkbt/heartbeat.so \
-	$(LOCAL_PATH)/system/lib/rtkbt/test.so:system/lib/rtkbt/test.so \
-	$(LOCAL_PATH)/system/lib/rtkbt/vhid_iflytek.so:system/lib/rtkbt/vhid_iflytek.so \
-	$(LOCAL_PATH)/system/lib/rtkbt/vhid.so:system/lib/rtkbt/vhid.so \
-	$(LOCAL_PATH)/system/lib/rtkbt/vr_bee_sbc.so:system/lib/rtkbt/vr_bee_sbc.so \
-	$(LOCAL_PATH)/system/lib/rtkbt/vr_bee.so:system/lib/rtkbt/vr_bee.so \
-	$(LOCAL_PATH)/system/lib/rtkbt/vr_iflytek.so:system/lib/rtkbt/vr_iflytek.so \
+	$(LOCAL_PATH)/system/lib/rtkbt/vr_bee1_hidraw.so:system/lib/rtkbt/vr_bee1_hidraw.so \
+	$(LOCAL_PATH)/system/lib/rtkbt/vr_bee2_hidraw.so:system/lib/rtkbt/vr_bee2_hidraw.so \
 	$(LOCAL_PATH)/system/usr/keylayout/rtkbt_virtual_hid.kl:system/usr/keylayout/rtkbt_virtual_hid.kl \
 
 

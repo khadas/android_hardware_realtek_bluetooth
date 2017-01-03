@@ -13,6 +13,7 @@
 #include "rtkbt_api.h"
 #include "btif_storage.h"
 #include "uipc.h"
+#include "btcore/include/module.h"
 
 enum {
     EVENT_GENERIC = 1,
@@ -257,12 +258,12 @@ static void *rtkbt_api_getbuf (UINT16 size, const char* func, int line)
 #ifdef BLUETOOTH_RTK_DBG_MEM
     return RTKBT_GKI_getbuf(size, func, line);
 #else
-    return GKI_getbuf(size);
+    return osi_malloc(size);
 #endif
 }
 static void rtkbt_api_freebuf (void * p)
 {
-    GKI_freebuf(p);
+    osi_free(p);
 }
 RTKBT_API_CALLBACK rtkbt_api_callbacks = {
     .version = RTKBT_API_VERSION,
@@ -293,12 +294,6 @@ RTKBT_API_CALLBACK rtkbt_api_callbacks = {
     .bta_hh_le_find_dev_cb_by_bda = bta_hh_le_find_dev_cb_by_bda,
     .btif_storage_get_remote_device_property = btif_storage_get_remote_device_property,
     .BTA_HhSendData = BTA_HhSendData,
-    .bta_dm_set_eir_config = bta_dm_set_eir_config,
-    .btsnd_hcic_set_reserved_lt_addr = btsnd_hcic_set_reserved_lt_addr,
-    .btsnd_hcic_write_sync_train_param = btsnd_hcic_write_sync_train_param,
-    .btsnd_hcic_set_clb = btsnd_hcic_set_clb,
-    .btsnd_hcic_start_sync_train = btsnd_hcic_start_sync_train,
-    .btsnd_hcic_write_clb_data = btsnd_hcic_write_clb_data,
     .btsnd_hcic_write_ext_inquiry_response = btsnd_hcic_write_ext_inquiry_response,
     .BTA_GATTC_ConfigureMTU = BTA_GATTC_ConfigureMTU,
     .btm_sec_is_a_bonded_dev = btm_sec_is_a_bonded_dev,
@@ -422,4 +417,28 @@ const rtkbt_interface_t *btif_rtkbt_get_interface(void)
     BTIF_TRACE_API("%s", __FUNCTION__);
     return &bt_rtkbt_interface;
 }
+
+static future_t *start_up(void) {
+  init(NULL);
+  return NULL;
+}
+
+static future_t *shut_down(void) {
+  cleanup();
+  return NULL;
+}
+
+EXPORT_SYMBOL const module_t rtkbt_plugin_module = {
+  .name = RTKBT_PLUGIN_MODULE,
+  .init = NULL,
+  .start_up = start_up,
+  .shut_down = shut_down,
+  .clean_up = NULL,
+  .dependencies = {
+    NULL,
+    NULL
+  }
+};
+
+
 #endif

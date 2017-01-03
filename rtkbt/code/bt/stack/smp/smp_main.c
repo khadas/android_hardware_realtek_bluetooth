@@ -100,17 +100,6 @@ const char *smp_get_state_name(tSMP_STATE state);
 
 typedef const UINT8(*tSMP_SM_TBL)[SMP_SM_NUM_COLS];
 
-#ifdef BLUETOOTH_RTK
-typedef struct {
-    BOOLEAN pending;
-    tSMP_CB *p_cb;
-    tSMP_EVENT event;
-    void *p_data;
-} KEY_PENDING;
-
-KEY_PENDING enc_info_pending, master_id_pending;
-#endif
-
 enum
 {
     SMP_PROC_SEC_REQ,
@@ -837,27 +826,6 @@ void smp_sm_event(tSMP_CB *p_cb, tSMP_EVENT event, void *p_data)
         }
     }
     SMP_TRACE_DEBUG( "result state = %s", smp_get_state_name( p_cb->state ) ) ;
-#ifdef BLUETOOTH_RTK
-    if(event == SMP_BOND_REQ_EVT && enc_info_pending.pending == TRUE) {
-        SMP_TRACE_EVENT("to process pending event SMP_ENCRPTION_INFO_EVT");
-        smp_sm_event(enc_info_pending.p_cb, enc_info_pending.event, enc_info_pending.p_data);
-        enc_info_pending.pending = FALSE;
-        GKI_freebuf(enc_info_pending.p_data);
-    }
-
-    if(event == SMP_BOND_REQ_EVT && master_id_pending.pending == TRUE) {
-        SMP_TRACE_EVENT("to process pending event SMP_ID_INFO_EVT");
-        smp_sm_event(master_id_pending.p_cb, master_id_pending.event, master_id_pending.p_data);
-        master_id_pending.pending = FALSE;
-        GKI_freebuf(master_id_pending.p_data);
-    }
-
-    if(event == SMP_L2CAP_CONN_EVT && p_cb->state == SMP_STATE_IDLE) {
-        SMP_TRACE_EVENT("clean enc_info_pending");
-        memset(&enc_info_pending, 0 , sizeof(enc_info_pending));
-        memset(&master_id_pending, 0 , sizeof(master_id_pending));
-    }
-#endif
 }
 
 /*******************************************************************************

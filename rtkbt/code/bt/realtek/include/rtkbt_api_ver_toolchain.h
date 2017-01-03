@@ -3,4 +3,4 @@
 		1 	// aosp: prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.8 
 		2 	// aosp: prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 
 */
-#define SUBVER_RTKBT_TOOLCHAIN (2)
+#define SUBVER_RTKBT_TOOLCHAIN (3)

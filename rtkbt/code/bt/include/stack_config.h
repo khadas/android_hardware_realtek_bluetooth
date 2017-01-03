@@ -20,8 +20,12 @@
 
 #include <stdbool.h>
 
-#include "config.h"
+#include "osi/include/config.h"
 #include "module.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 static const char STACK_CONFIG_MODULE[] = "stack_config_module";
 
@@ -33,8 +37,19 @@ typedef struct {
 #ifdef BLUETOOTH_RTK
   int  (*get_btsnoop_heartbeat_log)(void);
   const char* (*get_btsnoop_bqb_log)(void);
+  int (*get_btsnoop_h5enable_log)(void);
+  int (*get_btsnoop_coexenable_log)(void);
 #endif
+  bool (*get_pts_secure_only_mode)(void);
+  bool (*get_pts_conn_updates_disabled)(void);
+  bool (*get_pts_crosskey_sdp_disable)(void);
+  const char* (*get_pts_smp_options)(void);
+  int (*get_pts_smp_failure_case)(void);
   config_t *(*get_all)(void);
 } stack_config_t;
 
 const stack_config_t *stack_config_get_interface();
+
+#ifdef __cplusplus
+}
+#endif

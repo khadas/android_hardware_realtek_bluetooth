@@ -25,7 +25,8 @@
  ******************************************************************************/
 
 #undef NDEBUG
-#define LOG_TAG "bt_vendor"
+#define LOG_TAG "bt_vendor_uart"
+#define RTKBT_RELEASE_NAME	"Test"
 #include <utils/Log.h>
 #include "bt_vendor_rtk.h"
 #include "upio.h"
@@ -85,6 +86,7 @@ static const tUSERIAL_CFG userial_init_cfg =
 
 static int init(const bt_vendor_callbacks_t* p_cb, unsigned char *local_bdaddr,char *bt_device_node)
 {
+    ALOGI("RTKBT_RELEASE_NAME: %s",RTKBT_RELEASE_NAME);
     ALOGI("init");
 
     if (p_cb == NULL)
@@ -123,9 +125,9 @@ static int op(bt_vendor_opcode_t opcode, void *param)
                 int *state = (int *) param;
                 if (*state == BT_VND_PWR_OFF)
                 {
-                    upio_set_bluetooth_power(UPIO_BT_POWER_OFF);
-                    usleep(200000);
-                    BTVNDDBG("set power off and delay 200ms");
+                   upio_set_bluetooth_power(UPIO_BT_POWER_OFF);
+                   usleep(200000);
+                   BTVNDDBG("set power off and delay 200ms");
 
                 }
                 else if (*state == BT_VND_PWR_ON)

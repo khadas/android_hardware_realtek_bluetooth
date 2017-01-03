@@ -27,6 +27,7 @@
  ******************************************************************************/
 
 #define LOG_TAG "bt_hwcfg"
+#define RTKBT_RELEASE_NAME "20161229_TV_ANDROID_7.x"
 
 #include <utils/Log.h>
 #include <sys/types.h>
@@ -54,7 +55,7 @@
 /******************************************************************************
 **  Constants &  Macros
 ******************************************************************************/
-#define RTK_VERSION "4.0.2"
+#define RTK_VERSION "4.1.1"
 
 #ifndef BTHW_DBG
 #define BTHW_DBG FALSE
@@ -64,10 +65,6 @@
 #define BTHWDBG(param, ...) {ALOGD(param, ## __VA_ARGS__);}
 #else
 #define BTHWDBG(param, ...) {}
-#endif
-
-#ifndef USE_CONTROLLER_BDADDR
-#define USE_CONTROLLER_BDADDR TRUE
 #endif
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -90,6 +87,9 @@
 #define RTK_VENDOR_CONFIG_MAGIC         0x8723ab55
 #define MAX_PATCH_SIZE_24K            (1024*24)   //24K
 #define MAX_PATCH_SIZE_40K            (1024*40)   //40K
+
+#define MAX_ORG_CONFIG_SIZE     (0x100*14)
+#define MAX_ALT_CONFIG_SIZE     (0x100*2)
 
 struct rtk_bt_vendor_config_entry{
     uint16_t offset;
@@ -579,6 +579,145 @@ static uint8_t hw_config_set_controller_baudrate(HC_BT_HDR *p_buf, uint32_t baud
     return (retval);
 }
 
+static int getmacaddr(unsigned char * addr)
+{
+    int i = 0;
+    char data[256], *str;
+    int addr_fd;
+
+    if ((addr_fd = open("/data/misc/bluetooth/bdaddr", O_RDONLY)) != -1)
+    {
+        memset(data, 0, sizeof(data));
+        read(addr_fd, data, 17);
+        for (i = 0,str = data; i < 6; i++) {
+           addr[5-i] = (unsigned char)strtoul(str, &str, 16);
+           str++;
+        }
+        close(addr_fd);
+        return 0;
+    }
+    return -1;
+}
+
+static inline int getAltSettings(patch_info *patch_entry, unsigned short *offset, int max_group_cnt)
+{
+    int n = 0;
+    if(patch_entry)
+        offset[n++] = patch_entry->mac_offset;
+/*
+//sample code, add special settings
+
+    offset[n++] = 0x15B;
+*/
+    return n;
+}
+static inline int getAltSettingVal(patch_info *patch_entry, unsigned short offset, unsigned char * val)
+{
+    int res = 0;
+
+    switch(offset)
+    {
+/*
+//sample code, add special settings
+        case 0x15B:
+            val[0] = 0x0B;
+            val[1] = 0x0B;
+            val[2] = 0x0B;
+            val[3] = 0x0B;
+            res = 4;
+            break;
+*/
+        default:
+            res = 0;
+            break;
+    }
+    if((patch_entry)&&(offset == patch_entry->mac_offset)&&(res == 0))
+    {
+        if(getmacaddr(val) == 0){
+            ALOGI("MAC: %02x:%02x:%02x:%02x:%02x:%02x", val[5], val[4], val[3], val[2], val[1], val[0]);
+            res = 6;
+        }
+    }
+    return res;
+}
+
+void rtk_update_altsettings(patch_info *patch_entry, unsigned char* config_buf_ptr, size_t *config_len_ptr)
+{
+    unsigned short offset[256], data_len;
+    unsigned char val[256];
+
+    struct rtk_bt_vendor_config* config = (struct rtk_bt_vendor_config*) config_buf_ptr;
+    struct rtk_bt_vendor_config_entry* entry = config->entry;
+    size_t config_len = *config_len_ptr;
+    int count = 0,temp = 0, i = 0, j;
+
+    ALOGI("ORG Config len=%08x:\n", config_len);
+    for(i=0;i<=config_len;i+=0x10)
+    {
+        ALOGI("%08x: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", i, \
+            config_buf_ptr[i], config_buf_ptr[i+1], config_buf_ptr[i+2], config_buf_ptr[i+3], config_buf_ptr[i+4], config_buf_ptr[i+5], config_buf_ptr[i+6], config_buf_ptr[i+7], \
+            config_buf_ptr[i+8], config_buf_ptr[i+9], config_buf_ptr[i+10], config_buf_ptr[i+11], config_buf_ptr[i+12], config_buf_ptr[i+13], config_buf_ptr[i+14], config_buf_ptr[i+15]);
+    }
+
+    memset(offset, 0, sizeof(offset));
+    memset(val, 0, sizeof(val));
+    data_len = le16_to_cpu(config->data_len);
+
+    count = getAltSettings(patch_entry, offset, sizeof(offset)/sizeof(unsigned short));
+    if(count <= 0){
+        ALOGI("rtk_update_altsettings: No AltSettings");
+        return;
+    }else{
+        ALOGI("rtk_update_altsettings: %d AltSettings", count);
+    }
+
+    if (data_len != config_len - sizeof(struct rtk_bt_vendor_config))
+    {
+        ALOGE("rtk_update_altsettings: config len(%x) is not right(%x)", data_len, config_len-sizeof(struct rtk_bt_vendor_config));
+        return;
+    }
+
+    for (i=0; i<data_len;)
+    {
+        for(j = 0; j < count;j++)
+        {
+            if(le16_to_cpu(entry->offset) == offset[j])
+                offset[j] = 0;
+        }
+        if(getAltSettingVal(patch_entry, le16_to_cpu(entry->offset), val) == entry->entry_len){
+            ALOGI("rtk_update_altsettings: replace %04x[%02x]", le16_to_cpu(entry->offset), entry->entry_len);
+            memcpy(entry->entry_data, val, entry->entry_len);
+        }
+        temp = entry->entry_len + sizeof(struct rtk_bt_vendor_config_entry);
+        i += temp;
+        entry = (struct rtk_bt_vendor_config_entry*)((uint8_t*)entry + temp);
+    }
+    for(j = 0; j < count;j++){
+        if(offset[j] == 0)
+            continue;
+        entry->entry_len = getAltSettingVal(patch_entry, offset[j], val);
+        if(entry->entry_len <= 0)
+            continue;
+        entry->offset = cpu_to_le16(offset[j]);
+        memcpy(entry->entry_data, val, entry->entry_len);
+        ALOGI("rtk_update_altsettings: add %04x[%02x]", le16_to_cpu(entry->offset), entry->entry_len);
+        temp = entry->entry_len + sizeof(struct rtk_bt_vendor_config_entry);
+        i += temp;
+        entry = (struct rtk_bt_vendor_config_entry*)((uint8_t*)entry + temp);
+    }
+    config->data_len = cpu_to_le16(i);
+    *config_len_ptr = i+sizeof(struct rtk_bt_vendor_config);
+
+    ALOGI("NEW Config len=%08x:\n", *config_len_ptr);
+    for(i=0;i<=(*config_len_ptr);i+=0x10)
+    {
+        ALOGI("%08x: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", i, \
+            config_buf_ptr[i], config_buf_ptr[i+1], config_buf_ptr[i+2], config_buf_ptr[i+3], config_buf_ptr[i+4], config_buf_ptr[i+5], config_buf_ptr[i+6], config_buf_ptr[i+7], \
+            config_buf_ptr[i+8], config_buf_ptr[i+9], config_buf_ptr[i+10], config_buf_ptr[i+11], config_buf_ptr[i+12], config_buf_ptr[i+13], config_buf_ptr[i+14], config_buf_ptr[i+15]);
+    }
+    return;
+}
+
 uint32_t rtk_parse_config_file(unsigned char** config_buf, size_t* filelen, uint8_t bt_addr[6], uint16_t mac_offset)
 {
     struct rtk_bt_vendor_config* config = (struct rtk_bt_vendor_config*) *config_buf;
@@ -620,17 +759,6 @@ uint32_t rtk_parse_config_file(unsigned char** config_buf, size_t* filelen, uint
                 break;
             }
             default:
-#if (USE_CONTROLLER_BDADDR == FALSE)
-                if(le16_to_cpu(entry->offset) == mac_offset)
-                {
-                    config_has_bdaddr = 1;
-                    int j=0;
-                    for (j=0; j<entry->entry_len; j++)
-                        entry->entry_data[j] = bt_addr[entry->entry_len - 1- j];
-                    ALOGI("rtk_parse_config_file: DO NOT USE_CONTROLLER_BDADDR, config has bdaddr");
-                    break;
-                }
-#endif
                 ALOGI("config offset(0x%x),length(0x%x)", entry->offset, entry->entry_len);
                 break;
         }
@@ -638,30 +766,6 @@ uint32_t rtk_parse_config_file(unsigned char** config_buf, size_t* filelen, uint
         i += temp;
         entry = (struct rtk_bt_vendor_config_entry*)((uint8_t*)entry + temp);
     }
-#if(USE_CONTROLLER_BDADDR == FALSE)
-    if(!config_has_bdaddr)
-    {
-        ALOGI("rtk_parse_config_file: DO NOT USE_CONTROLLER_BDADDR, config has no bdaddr");
-        ALOGI("rtk_parse_config_file : CONFIG_ADDR is: %02X:%02X:%02X:%02X:%02X:%02X BT_MAC_OFFSET:%d",
-        bt_addr[0], bt_addr[1],
-        bt_addr[2], bt_addr[3],
-        bt_addr[4], bt_addr[5],
-        mac_offset);
-        *config_buf = realloc(*config_buf, *filelen+9);
-        ((struct rtk_bt_vendor_config*)*config_buf)->data_len += 9;
-
-        *((char*)*config_buf + *filelen) = mac_offset;
-        *((char*)*config_buf + *filelen + 1) = 0x00;
-        *((char*)*config_buf + *filelen + 2) = 0x06;
-        *((char*)*config_buf + *filelen + 3) = bt_addr[5];
-        *((char*)*config_buf + *filelen + 4) = bt_addr[4];
-        *((char*)*config_buf + *filelen + 5) = bt_addr[3];
-        *((char*)*config_buf + *filelen + 6) = bt_addr[2];
-        *((char*)*config_buf + *filelen + 7) = bt_addr[1];
-        *((char*)*config_buf + *filelen + 8) = bt_addr[0];
-        *filelen += 9;
-    }
-#endif
 
     return baudrate;
 }
@@ -685,6 +789,11 @@ uint32_t rtk_get_bt_config(unsigned char** config_buf,
     }
 
     filelen = st.st_size;
+    if(filelen > MAX_ORG_CONFIG_SIZE)
+    {
+        ALOGE("bt config file is too large(>0x%04x)", MAX_ORG_CONFIG_SIZE);
+        return -1;
+    }
 
     if ((fd = open(bt_config_file_name, O_RDONLY)) < 0)
     {
@@ -692,7 +801,7 @@ uint32_t rtk_get_bt_config(unsigned char** config_buf,
         return -1;
     }
 
-    if ((*config_buf = malloc(filelen)) == NULL)
+    if ((*config_buf = malloc(MAX_ORG_CONFIG_SIZE+MAX_ALT_CONFIG_SIZE)) == NULL)
     {
         ALOGE("malloc buffer for config file fail(0x%x)\n", filelen);
         close(fd);
@@ -1179,6 +1288,7 @@ CFG_START:
                     ALOGE("Get Config file fail, just use efuse settings");
                     hw_cfg_cb.config_len = 0;
                 }
+                rtk_update_altsettings(prtk_patch_file_info, hw_cfg_cb.config_buf, &(hw_cfg_cb.config_len));
 
                 hw_cfg_cb.fw_len = rtk_get_bt_firmware(&hw_cfg_cb.fw_buf, prtk_patch_file_info->patch_name);
                 if (hw_cfg_cb.fw_len < 0)
@@ -1284,21 +1394,22 @@ DOWNLOAD_FW:
 
                 if (hw_cfg_cb.patch_frag_idx < hw_cfg_cb.patch_frag_cnt)
                 {
+                    iIndexRx = hw_cfg_cb.patch_frag_idx?((hw_cfg_cb.patch_frag_idx-1)%0x7f+1):0;
                     if (hw_cfg_cb.patch_frag_idx == hw_cfg_cb.patch_frag_cnt - 1)
                     {
                         ALOGI("HW_CFG_DL_FW_PATCH: send last fw fragment");
-                        hw_cfg_cb.patch_frag_idx |= 0x80;
+                        iIndexRx |= 0x80;
                         hw_cfg_cb.patch_frag_len = hw_cfg_cb.patch_frag_tail;
                     }
                     else
                     {
-                        hw_cfg_cb.patch_frag_idx &= 0x7F;
+                        iIndexRx &= 0x7F;
                         hw_cfg_cb.patch_frag_len = PATCH_DATA_FIELD_MAX_SIZE;
                     }
                 }
 
-                is_proceeding = hci_download_patch_h4(p_buf, hw_cfg_cb.patch_frag_idx,
-                                    hw_cfg_cb.total_buf+(hw_cfg_cb.patch_frag_idx&0x7F)*PATCH_DATA_FIELD_MAX_SIZE,
+                is_proceeding = hci_download_patch_h4(p_buf, iIndexRx,
+                                    hw_cfg_cb.total_buf+(hw_cfg_cb.patch_frag_idx*PATCH_DATA_FIELD_MAX_SIZE),
                                     hw_cfg_cb.patch_frag_len);
                 break;
 
@@ -1393,13 +1504,32 @@ void hw_config_start(void)
     memset(&hw_cfg_cb, 0, sizeof(bt_hw_cfg_cb_t));
     hw_cfg_cb.dl_fw_flag = 1;
     hw_cfg_cb.chip_type = CHIPTYPE_NONE;
+    ALOGI("RTKBT_RELEASE_NAME: %s",RTKBT_RELEASE_NAME);
     ALOGI("\nRealtek libbt-vendor_uart Version %s \n",RTK_VERSION);
+    HC_BT_HDR  *p_buf = NULL;
+    uint8_t     *p;
+
     ALOGI("hw_config_start\n");
-    /* Start from sending H5 SYNC */
+    /* Start from sending H5 INIT */
     if (bt_vendor_cbacks)
     {
-        hw_cfg_cb.state = HW_CFG_H5_INIT;
-        bt_vendor_cbacks->xmit_cb(HCI_VSC_H5_INIT, NULL, hw_config_cback);
+        /* Must allocate command buffer via HC's alloc API */
+        p_buf = (HC_BT_HDR *) bt_vendor_cbacks->alloc(BT_HC_HDR_SIZE + \
+                                                       HCI_CMD_PREAMBLE_SIZE);
+        if(p_buf)
+        {
+            p_buf->event = MSG_STACK_TO_HC_HCI_CMD;
+            p_buf->offset = 0;
+            p_buf->layer_specific = 0;
+            p_buf->len = HCI_CMD_PREAMBLE_SIZE;
+
+            p = (uint8_t *) (p_buf + 1);
+            UINT16_TO_STREAM(p, HCI_VSC_H5_INIT);
+            *p = 0; /* parameter length */
+        }
+            hw_cfg_cb.state = HW_CFG_H5_INIT;
+
+        bt_vendor_cbacks->xmit_cb(HCI_VSC_H5_INIT, p_buf, hw_config_cback);
     }
 }
 

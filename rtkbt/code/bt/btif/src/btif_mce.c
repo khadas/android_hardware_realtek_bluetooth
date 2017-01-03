@@ -26,20 +26,21 @@
  *
  ***********************************************************************************/
 
-#include <hardware/bluetooth.h>
-#include <hardware/bt_mce.h>
+#define LOG_TAG "bt_btif_mce"
+
 #include <stdlib.h>
 #include <string.h>
 
-#define LOG_TAG "bt_btif_mce"
-#include "btif_common.h"
-#include "btif_util.h"
-#include "btif_profile_queue.h"
-#include "bta_api.h"
-#include "bta_mce_api.h"
+#include <hardware/bluetooth.h>
+#include <hardware/bt_mce.h>
 
 #include "bt_types.h"
+#include "bta_api.h"
+#include "bta_mce_api.h"
 #include "btcore/include/bdaddr.h"
+#include "btif_common.h"
+#include "btif_profile_queue.h"
+#include "btif_util.h"
 
 /*****************************************************************************
 **  Static variables
@@ -85,7 +86,7 @@ static void mas_discovery_comp_copy_cb(UINT16 event, char *p_dest, char *p_src)
     if (event != BTA_MCE_MAS_DISCOVERY_COMP_EVT)
         return;
 
-    memcpy(p_dest_data, p_src_data, sizeof(tBTA_MCE_MAS_DISCOVERY_COMP));
+    maybe_non_aligned_memcpy(p_dest_data, p_src_data, sizeof(*p_src_data));
 
     p_dest_str = p_dest + sizeof(tBTA_MCE_MAS_DISCOVERY_COMP);
 
@@ -141,7 +142,6 @@ static bt_status_t get_remote_mas_instances(bt_bdaddr_t *bd_addr)
 
     return BT_STATUS_SUCCESS;
 }
-
 #ifdef BLUETOOTH_RTK
 static const btmce_interface_t mce_if = {
     .size = sizeof(btmce_interface_t),
@@ -155,7 +155,6 @@ static const btmce_interface_t mce_if = {
     get_remote_mas_instances,
 };
 #endif
-
 const btmce_interface_t *btif_mce_get_interface(void)
 {
     BTIF_TRACE_EVENT("%s", __FUNCTION__);

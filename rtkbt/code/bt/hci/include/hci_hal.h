@@ -21,22 +21,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "thread.h"
+#include "osi/include/thread.h"
 #include "vendor.h"
 
 typedef enum {
   DATA_TYPE_COMMAND = 1,
   DATA_TYPE_ACL     = 2,
   DATA_TYPE_SCO     = 3,
-#ifdef BLUETOOTH_RTK
-  DATA_TYPE_EVENT   = 4,
-  DATA_TYPE_H5  =  5
-#else
   DATA_TYPE_EVENT   = 4
-#endif
 } serial_data_type_t;
 
 typedef void (*data_ready_cb)(serial_data_type_t type);
+
 
 typedef struct {
   // Called when the HAL detects inbound data.
@@ -62,10 +58,9 @@ typedef struct hci_hal_t {
   void (*close)(void);
 
   // Retrieve up to |max_size| bytes for ACL, SCO, or EVENT data packets into
-  // |buffer|, blocking until max_size bytes read if |block| is true.
-  // Only guaranteed to be correct in the context of a data_ready callback
-  // of the corresponding type.
-  size_t (*read_data)(serial_data_type_t type, uint8_t *buffer, size_t max_size, bool block);
+  // |buffer|. Only guaranteed to be correct in the context of a data_ready
+  // callback of the corresponding type.
+  size_t (*read_data)(serial_data_type_t type, uint8_t *buffer, size_t max_size);
   // The upper layer must call this to notify the HAL that it has finished
   // reading a packet of the specified |type|. Underlying implementations that
   // use shared channels for multiple data types depend on this to know when
@@ -87,6 +82,9 @@ typedef struct hci_hal_t {
 const hci_hal_t *hci_hal_get_interface(void);
 
 const hci_hal_t *hci_hal_h4_get_interface(void);
+#ifdef BLUETOOTH_RTK
+const hci_hal_t *hci_hal_h5_get_interface(void);
+#endif
 const hci_hal_t *hci_hal_h4_get_test_interface(vendor_t *vendor_interface);
 
 const hci_hal_t *hci_hal_mct_get_interface(void);

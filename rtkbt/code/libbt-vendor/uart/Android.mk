@@ -2,7 +2,7 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-BDROID_DIR := $(TOP_DIR)system/bt
+BDROID_DIR := $(LOCAL_PATH)/../../bt
 
 LOCAL_SRC_FILES := \
         src/bt_vendor_rtk.c \

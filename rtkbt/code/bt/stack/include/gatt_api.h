@@ -549,7 +549,7 @@ typedef struct
 } tGATT_DISC_RES;
 
 
-#define GATT_LINK_IDLE_TIMEOUT_WHEN_NO_APP    0 /* start a idle timer for this duration
+#define GATT_LINK_IDLE_TIMEOUT_WHEN_NO_APP    1 /* start a idle timer for this duration
                                                  when no application need to use the link */
 
 #define GATT_LINK_NO_IDLE_TIMEOUT            0xFFFF
@@ -1180,10 +1180,10 @@ extern BOOLEAN GATT_Listen (tGATT_IF gatt_if, BOOLEAN start, BD_ADDR_PTR bd_addr
 *******************************************************************************/
 extern void GATT_ConfigServiceChangeCCC (BD_ADDR remote_bda, BOOLEAN enable,
                                                     tBT_TRANSPORT transport);
- 
 #ifdef BLUETOOTH_RTK
 extern tGATT_STATUS GATT_RemoveLinkFlag (UINT16 conn_id);
 #endif
+ 
 #ifdef __cplusplus
 
 }

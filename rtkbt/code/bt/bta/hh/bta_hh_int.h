@@ -191,11 +191,10 @@ typedef struct
 {
     UINT8                   index;
     BOOLEAN                 in_use;
-    UINT8                   inst_id;    /* share service instance ID and report instance ID, as
-                                           hi 4 for service instance ID, low 4 as charatceristic instance ID */
+    UINT8                   srvc_inst_id;
+    UINT8                   char_inst_id;
     tBTA_HH_RPT_TYPE        rpt_type;
     UINT16                  uuid;
-    UINT8                   prop;
     UINT8                   rpt_id;
     BOOLEAN                 client_cfg_exist;
     UINT16                  client_cfg_value;
@@ -208,11 +207,11 @@ typedef struct
 typedef struct
 {
     BOOLEAN                 in_use;
+    UINT8                   srvc_inst_id;
     tBTA_HH_LE_RPT          report[BTA_HH_LE_RPT_MAX];
 
-#define BTA_HH_LE_PROTO_MODE_BIT        0x01
-#define BTA_HH_LE_CP_BIT                0x02
-    UINT8                   option_char; /* control point char exisit or not */
+    UINT16                  proto_mode_handle;
+    UINT8                   control_point_handle;
 
     BOOLEAN                 expl_incl_srvc;
     UINT8                   incl_srvc_inst; /* assuming only one included service : battery service */
@@ -222,14 +221,6 @@ typedef struct
     tBTA_HH_DEV_DESCR       descriptor;
 
 }tBTA_HH_LE_HID_SRVC;
-
-#ifdef BLUETOOTH_RTK_BQB
-#define BTA_HH_LE_HID_SRVC_MAX      2
-#endif
-
-#ifndef BTA_HH_LE_HID_SRVC_MAX
-#define BTA_HH_LE_HID_SRVC_MAX      1
-#endif
 
 /* convert a HID handle to the LE CB index */
 #define BTA_HH_GET_LE_CB_IDX(x)         (((x) >> 4) - 1)
@@ -271,12 +262,11 @@ typedef struct
     tBTA_HH_STATUS      status;
     tBTA_GATT_REASON    reason;
     BOOLEAN             is_le_device;
-    tBTA_HH_LE_HID_SRVC hid_srvc[BTA_HH_LE_HID_SRVC_MAX];
+    tBTA_HH_LE_HID_SRVC hid_srvc;
     UINT16              conn_id;
     BOOLEAN             in_bg_conn;
-    UINT8               total_srvc;
     UINT8               clt_cfg_idx;
-    UINT8               cur_srvc_index; /* currently discovering service index */
+    UINT16              scan_refresh_char_handle;
     BOOLEAN             scps_supported;
 
 #define BTA_HH_LE_SCPS_NOTIFY_NONE    0
@@ -286,13 +276,6 @@ typedef struct
 #endif
 
     BOOLEAN             security_pending;
-
-#ifdef BLUETOOTH_RTK_BQB
-    tBT_UUID            bqb_report_char_cond;
-    tBTA_GATTC_CHAR_ID  bqb_report_char_result;
-    tBTA_GATT_CHAR_PROP bqb_report_prop;
-#endif
-
 } tBTA_HH_DEV_CB;
 
 /* key board parsing control block */
@@ -349,6 +332,9 @@ extern void bta_hh_sm_execute(tBTA_HH_DEV_CB *p_cb, UINT16 event,
 
 /* action functions */
 extern void bta_hh_api_disc_act(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_data);
+#ifdef BLUETOOTH_RTK
+extern void bta_hh_le_api_disc_only_act(tBTA_HH_DEV_CB *p_cb);
+#endif
 extern void bta_hh_open_act(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_data);
 extern void bta_hh_close_act(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_data);
 extern void bta_hh_data_act(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA * p_data);
@@ -421,7 +407,7 @@ extern void bta_hh_le_notify_enc_cmpl(tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_data
 extern void bta_hh_ci_load_rpt (tBTA_HH_DEV_CB *p_cb, tBTA_HH_DATA *p_buf);
 
 #ifdef BLUETOOTH_RTK
-extern void bta_hh_le_deregister_input_notif(tBTA_HH_DEV_CB *p_dev_cb, UINT8 srvc_inst, UINT8 proto_mode);
+extern void bta_hh_le_deregister_input_notif(tBTA_HH_DEV_CB *p_dev_cb, UINT8 proto_mode, BOOLEAN register_ba);
 #endif
 
 #if BTA_HH_DEBUG

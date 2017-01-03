@@ -24,54 +24,54 @@
  *
  ***********************************************************************************/
 
+#define LOG_TAG "bt_btif"
+
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
 #include <hardware/bluetooth.h>
+#include <hardware/bt_av.h>
+#include <hardware/bt_gatt.h>
 #include <hardware/bt_hf.h>
 #include <hardware/bt_hf_client.h>
-#include <hardware/bt_av.h>
-#include <hardware/bt_sock.h>
 #include <hardware/bt_hh.h>
 #include <hardware/bt_hl.h>
-#include <hardware/bt_pan.h>
 #include <hardware/bt_mce.h>
-#include <hardware/bt_gatt.h>
+#include <hardware/bt_pan.h>
 #include <hardware/bt_rc.h>
 #include <hardware/bt_sdp.h>
+#include <hardware/bt_sock.h>
 
-#define LOG_NDDEBUG 0
-#define LOG_TAG "bt_bluedroid"
-
+#include "bt_utils.h"
 #include "btif_api.h"
 #include "btif_debug.h"
 #include "btsnoop.h"
 #include "btsnoop_mem.h"
-#include "bt_utils.h"
-#include "osi/include/osi.h"
+#include "device/include/interop.h"
 #include "osi/include/allocation_tracker.h"
+#include "osi/include/alarm.h"
 #include "osi/include/log.h"
+#include "osi/include/metrics.h"
+#include "osi/include/osi.h"
+#include "osi/include/wakelock.h"
 #include "stack_manager.h"
 #include "btif_config.h"
+#include "btif_storage.h"
+#include "btif/include/btif_debug_btsnoop.h"
+#include "btif/include/btif_debug_conn.h"
+#include "btif/include/btif_media.h"
 #ifdef BLUETOOTH_RTK_API
 #include <hardware/bt_rtkbt.h>
 #endif
-/************************************************************************************
-**  Constants & Macros
-************************************************************************************/
-
-#define is_profile(profile, str) ((strlen(str) == strlen(profile)) && strncmp((const char *)profile, str, strlen(str)) == 0)
-
 /************************************************************************************
 **  Static variables
 ************************************************************************************/
 
 bt_callbacks_t *bt_hal_cbacks = NULL;
-
-/** Operating System specific callouts for resource management */
-bt_os_callouts_t *bt_os_callouts = NULL;
+bool restricted_mode = FALSE;
 
 /************************************************************************************
 **  Externs
@@ -111,12 +111,19 @@ extern btsdp_interface_t *btif_sdp_get_interface();
 #ifdef BLUETOOTH_RTK_API
 extern rtkbt_interface_t *btif_rtkbt_get_interface();
 #endif
+
 /************************************************************************************
 **  Functions
 ************************************************************************************/
 
 static bool interface_ready(void) {
   return bt_hal_cbacks != NULL;
+}
+
+static bool is_profile(const char *p1, const char *p2) {
+  assert(p1);
+  assert(p2);
+  return strlen(p1) == strlen(p2) && strncmp(p1, p2, strlen(p2)) == 0;
 }
 
 /*****************************************************************************
@@ -126,7 +133,7 @@ static bool interface_ready(void) {
 *****************************************************************************/
 
 static int init(bt_callbacks_t *callbacks) {
-  LOG_INFO("%s", __func__);
+  LOG_INFO(LOG_TAG, "%s", __func__);
 
   if (interface_ready())
     return BT_STATUS_DONE;
@@ -144,8 +151,10 @@ static int init(bt_callbacks_t *callbacks) {
   return BT_STATUS_SUCCESS;
 }
 
-static int enable(void) {
-  LOG_INFO("%s", __func__);
+static int enable(bool start_restricted) {
+  LOG_INFO(LOG_TAG, "%s: start restricted = %d", __func__, start_restricted);
+
+  restricted_mode = start_restricted;
 
   if (!interface_ready())
     return BT_STATUS_NOT_READY;
@@ -163,7 +172,11 @@ static int disable(void) {
 }
 
 static void cleanup(void) {
-  stack_manager_get_interface()->clean_up_stack_async();
+  stack_manager_get_interface()->clean_up_stack();
+}
+
+bool is_restricted_mode() {
+  return restricted_mode;
 }
 
 static int get_adapter_properties(void)
@@ -265,6 +278,16 @@ static int create_bond(const bt_bdaddr_t *bd_addr, int transport)
     return btif_dm_create_bond(bd_addr, transport);
 }
 
+static int create_bond_out_of_band(const bt_bdaddr_t *bd_addr, int transport,
+                                   const bt_out_of_band_data_t *oob_data)
+{
+    /* sanity check */
+    if (interface_ready() == FALSE)
+        return BT_STATUS_NOT_READY;
+
+    return btif_dm_create_bond_out_of_band(bd_addr, transport, oob_data);
+}
+
 static int cancel_bond(const bt_bdaddr_t *bd_addr)
 {
     /* sanity check */
@@ -276,6 +299,9 @@ static int cancel_bond(const bt_bdaddr_t *bd_addr)
 
 static int remove_bond(const bt_bdaddr_t *bd_addr)
 {
+    if (is_restricted_mode() && !btif_storage_is_restricted_device(bd_addr))
+        return BT_STATUS_SUCCESS;
+
     /* sanity check */
     if (interface_ready() == FALSE)
         return BT_STATUS_NOT_READY;
@@ -320,14 +346,36 @@ static int read_energy_info()
     return BT_STATUS_SUCCESS;
 }
 
-static void dump(int fd)
+static void dump(int fd, const char **arguments)
 {
-    btif_debug_dump(fd);
+    if (arguments != NULL && arguments[0] != NULL) {
+      if (strncmp(arguments[0], "--proto-text", 12) == 0) {
+        btif_update_a2dp_metrics();
+        metrics_print(fd, true);
+        return;
+      }
+      if (strncmp(arguments[0], "--proto-bin", 11) == 0) {
+        btif_update_a2dp_metrics();
+        metrics_write(fd, true);
+        return;
+      }
+    }
+    btif_debug_conn_dump(fd);
+    btif_debug_bond_event_dump(fd);
+    btif_debug_a2dp_dump(fd);
+    btif_debug_config_dump(fd);
+    wakelock_debug_dump(fd);
+    alarm_debug_dump(fd);
+#if defined(BTSNOOP_MEM) && (BTSNOOP_MEM == TRUE)
+    btif_debug_btsnoop_dump(fd);
+#endif
+
+    close(fd);
 }
 
 static const void* get_profile_interface (const char *profile_id)
 {
-    LOG_INFO("get_profile_interface %s", profile_id);
+    LOG_INFO(LOG_TAG, "get_profile_interface %s", profile_id);
 
     /* sanity check */
     if (interface_ready() == FALSE)
@@ -380,7 +428,7 @@ static const void* get_profile_interface (const char *profile_id)
 
 int dut_mode_configure(uint8_t enable)
 {
-    LOG_INFO("dut_mode_configure");
+    LOG_INFO(LOG_TAG, "dut_mode_configure");
 
     /* sanity check */
     if (interface_ready() == FALSE)
@@ -391,7 +439,7 @@ int dut_mode_configure(uint8_t enable)
 
 int dut_mode_send(uint16_t opcode, uint8_t* buf, uint8_t len)
 {
-    LOG_INFO("dut_mode_send");
+    LOG_INFO(LOG_TAG, "dut_mode_send");
 
     /* sanity check */
     if (interface_ready() == FALSE)
@@ -403,7 +451,7 @@ int dut_mode_send(uint16_t opcode, uint8_t* buf, uint8_t len)
 #if BLE_INCLUDED == TRUE
 int le_test_mode(uint16_t opcode, uint8_t* buf, uint8_t len)
 {
-    LOG_INFO("le_test_mode");
+    LOG_INFO(LOG_TAG, "le_test_mode");
 
     /* sanity check */
     if (interface_ready() == FALSE)
@@ -415,7 +463,7 @@ int le_test_mode(uint16_t opcode, uint8_t* buf, uint8_t len)
 
 int config_hci_snoop_log(uint8_t enable)
 {
-    LOG_INFO("config_hci_snoop_log");
+    LOG_INFO(LOG_TAG, "config_hci_snoop_log");
 
     if (!interface_ready())
         return BT_STATUS_NOT_READY;
@@ -425,13 +473,13 @@ int config_hci_snoop_log(uint8_t enable)
 }
 
 static int set_os_callouts(bt_os_callouts_t *callouts) {
-    bt_os_callouts = callouts;
+    wakelock_set_os_callouts(callouts);
     return BT_STATUS_SUCCESS;
 }
 
 static int config_clear(void) {
-    LOG_INFO("%s", __func__);
-    return btif_config_clear();
+    LOG_INFO(LOG_TAG, "%s", __func__);
+    return btif_config_clear() ? BT_STATUS_SUCCESS : BT_STATUS_FAIL;
 }
 #ifdef BLUETOOTH_RTK
 static const bt_interface_t bluetoothInterface = {
@@ -451,6 +499,7 @@ static const bt_interface_t bluetoothInterface = {
     .start_discovery = start_discovery,
     .cancel_discovery = cancel_discovery,
     .create_bond = create_bond,
+    .create_bond_out_of_band = create_bond_out_of_band,
     .remove_bond = remove_bond,
     .cancel_bond = cancel_bond,
     .get_connection_state = get_connection_state,
@@ -469,6 +518,8 @@ static const bt_interface_t bluetoothInterface = {
     .read_energy_info = read_energy_info,
     .dump = dump,
     .config_clear = config_clear,
+    .interop_database_clear = interop_database_clear,
+    .interop_database_add = interop_database_add,
 };
 #else
 static const bt_interface_t bluetoothInterface = {
@@ -488,6 +539,7 @@ static const bt_interface_t bluetoothInterface = {
     start_discovery,
     cancel_discovery,
     create_bond,
+    create_bond_out_of_band,
     remove_bond,
     cancel_bond,
     get_connection_state,
@@ -505,10 +557,11 @@ static const bt_interface_t bluetoothInterface = {
     set_os_callouts,
     read_energy_info,
     dump,
-    config_clear
+    config_clear,
+    interop_database_clear,
+    interop_database_add,
 };
 #endif
-
 const bt_interface_t* bluetooth__get_bluetooth_interface ()
 {
     /* fixme -- add property to disable bt interface ? */
@@ -538,12 +591,11 @@ static int open_bluetooth_stack(const struct hw_module_t *module, UNUSED_ATTR ch
   return 0;
 }
 
-
 static struct hw_module_methods_t bt_stack_module_methods = {
     .open = open_bluetooth_stack,
 };
 
-struct hw_module_t HAL_MODULE_INFO_SYM = {
+EXPORT_SYMBOL struct hw_module_t HAL_MODULE_INFO_SYM = {
     .tag = HARDWARE_MODULE_TAG,
     .version_major = 1,
     .version_minor = 0,

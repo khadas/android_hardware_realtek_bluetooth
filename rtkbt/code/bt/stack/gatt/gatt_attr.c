@@ -235,26 +235,24 @@ static void gatt_connect_cback (tGATT_IF gatt_if, BD_ADDR bda, UINT16 conn_id,
 {
     UNUSED(gatt_if);
 
-    GATT_TRACE_EVENT ("%s: from %08x%04x connected:%d conn_id=%d reason = 0x%04x", __FUNCTION__,
-                       (bda[0]<<24)+(bda[1]<<16)+(bda[2]<<8)+bda[3],
-                       (bda[4]<<8)+bda[5], connected, conn_id, reason);
+    GATT_TRACE_EVENT("%s: from %08x%04x connected:%d conn_id=%d reason = 0x%04x", __func__,
+                      (bda[0]<<24)+(bda[1]<<16)+(bda[2]<<8)+bda[3],
+                      (bda[4]<<8)+bda[5], connected, conn_id, reason);
 
     tGATT_PROFILE_CLCB *p_clcb = gatt_profile_find_clcb_by_bd_addr(bda, transport);
-    if (p_clcb == NULL)
-        return;
+    if (connected) {
+        if (p_clcb == NULL)
+            p_clcb = gatt_profile_clcb_alloc(conn_id, bda, transport);
 
-    if (connected)
-    {
-        p_clcb->conn_id = conn_id;
+        if (p_clcb == NULL)
+            return;
+
         p_clcb->connected = TRUE;
-
-        if (p_clcb->ccc_stage == GATT_SVC_CHANGED_CONNECTING)
-        {
-            p_clcb->ccc_stage ++;
-            gatt_cl_start_config_ccc(p_clcb);
-        }
+        p_clcb->ccc_stage = GATT_SVC_CHANGED_SERVICE;
+        gatt_cl_start_config_ccc(p_clcb);
     } else {
-        gatt_profile_clcb_dealloc(p_clcb);
+        if (p_clcb != NULL)
+            gatt_profile_clcb_dealloc(p_clcb);
     }
 }
 
@@ -301,25 +299,6 @@ void gatt_profile_db_init (void)
 
 /*******************************************************************************
 **
-** Function         gatt_config_ccc_complete
-**
-** Description      The function finish the service change ccc configuration
-**
-** Returns          void
-**
-*******************************************************************************/
-static void gatt_config_ccc_complete(tGATT_PROFILE_CLCB *p_clcb)
-{
-#ifdef BLUETOOTH_RTK
-    GATT_RemoveLinkFlag (p_clcb->conn_id);
-#else
-    GATT_Disconnect(p_clcb->conn_id);
-#endif
-    gatt_profile_clcb_dealloc(p_clcb);
-}
-
-/*******************************************************************************
-**
 ** Function         gatt_disc_res_cback
 **
 ** Description      Gatt profile discovery result callback
@@ -356,6 +335,23 @@ static void gatt_disc_res_cback (UINT16 conn_id, tGATT_DISC_TYPE disc_type, tGAT
     }
 }
 
+#ifdef BLUETOOTH_RTK
+/*******************************************************************************
+**
+** Function         gatt_config_ccc_complete
+**
+** Description      The function finish the service change ccc configuration
+**
+** Returns          void
+**
+*******************************************************************************/
+static void gatt_config_ccc_complete(tGATT_PROFILE_CLCB *p_clcb)
+{
+    GATT_RemoveLinkFlag (p_clcb->conn_id);
+    gatt_profile_clcb_dealloc(p_clcb);
+}
+#endif
+
 /*******************************************************************************
 **
 ** Function         gatt_disc_cmpl_cback
@@ -378,9 +374,10 @@ static void gatt_disc_cmpl_cback (UINT16 conn_id, tGATT_DISC_TYPE disc_type, tGA
         p_clcb->ccc_stage ++;
         gatt_cl_start_config_ccc(p_clcb);
     } else {
-        GATT_TRACE_ERROR("%s() - Register for service changed indication failure", __FUNCTION__);
-        /* free the connection */
+        GATT_TRACE_ERROR("%s() - Unable to register for service changed indication", __func__);
+#ifdef BLUETOOTH_RTK
         gatt_config_ccc_complete (p_clcb);
+#endif
     }
 }
 
@@ -394,27 +391,12 @@ static void gatt_disc_cmpl_cback (UINT16 conn_id, tGATT_DISC_TYPE disc_type, tGA
 **
 *******************************************************************************/
 static void gatt_cl_op_cmpl_cback (UINT16 conn_id, tGATTC_OPTYPE op,
-                                           tGATT_STATUS status, tGATT_CL_COMPLETE *p_data)
+                                   tGATT_STATUS status, tGATT_CL_COMPLETE *p_data)
 {
-    tGATT_PROFILE_CLCB *p_clcb = gatt_profile_find_clcb_by_conn_id(conn_id);
-
-    if (p_clcb == NULL)
-        return;
-#ifdef BLUETOOTH_RTK
-    if ((op == GATTC_OPTYPE_NOTIFICATION) || (op == GATTC_OPTYPE_INDICATION))
-    {
-        GATT_TRACE_DEBUG("%s() operation is notification or indication", __FUNCTION__);
-        return;
-    }
-#endif
-
-    if (op == GATTC_OPTYPE_WRITE)
-    {
-        GATT_TRACE_DEBUG("%s() - ccc write status : %d", __FUNCTION__, status);
-    }
-
-    /* free the connection */
-    gatt_config_ccc_complete (p_clcb);
+    UNUSED(conn_id);
+    UNUSED(op);
+    UNUSED(status);
+    UNUSED(p_data);
 }
 
 /*******************************************************************************
@@ -443,11 +425,7 @@ static void gatt_cl_start_config_ccc(tGATT_PROFILE_CLCB *p_clcb)
         srvc_disc_param.e_handle = 0xffff;
         srvc_disc_param.service.len = 2;
         srvc_disc_param.service.uu.uuid16 = UUID_SERVCLASS_GATT_SERVER;
-        if (GATTC_Discover (p_clcb->conn_id, GATT_DISC_SRVC_BY_UUID, &srvc_disc_param) != GATT_SUCCESS)
-        {
-            GATT_TRACE_ERROR("%s() - ccc service error", __FUNCTION__);
-            gatt_config_ccc_complete(p_clcb);
-        }
+        GATTC_Discover(p_clcb->conn_id, GATT_DISC_SRVC_BY_UUID, &srvc_disc_param);
         break;
 
     case GATT_SVC_CHANGED_CHARACTERISTIC: /* discover service change char */
@@ -455,32 +433,20 @@ static void gatt_cl_start_config_ccc(tGATT_PROFILE_CLCB *p_clcb)
         srvc_disc_param.e_handle = p_clcb->e_handle;
         srvc_disc_param.service.len = 2;
         srvc_disc_param.service.uu.uuid16 = GATT_UUID_GATT_SRV_CHGD;
-        if (GATTC_Discover (p_clcb->conn_id, GATT_DISC_CHAR, &srvc_disc_param) != GATT_SUCCESS)
-        {
-            GATT_TRACE_ERROR("%s() - ccc char error", __FUNCTION__);
-            gatt_config_ccc_complete(p_clcb);
-        }
+        GATTC_Discover(p_clcb->conn_id, GATT_DISC_CHAR, &srvc_disc_param);
         break;
 
     case GATT_SVC_CHANGED_DESCRIPTOR: /* discover service change ccc */
         srvc_disc_param.s_handle = p_clcb->s_handle;
         srvc_disc_param.e_handle = p_clcb->e_handle;
-        if (GATTC_Discover (p_clcb->conn_id, GATT_DISC_CHAR_DSCPT, &srvc_disc_param) != GATT_SUCCESS)
-        {
-            GATT_TRACE_ERROR("%s() - ccc char descriptor error", __FUNCTION__);
-            gatt_config_ccc_complete(p_clcb);
-        }
+        GATTC_Discover(p_clcb->conn_id, GATT_DISC_CHAR_DSCPT, &srvc_disc_param);
         break;
 
     case GATT_SVC_CHANGED_CONFIGURE_CCCD: /* write ccc */
         ccc_value.handle = p_clcb->s_handle;
         ccc_value.len = 2;
         ccc_value.value[0] = GATT_CLT_CONFIG_INDICATION;
-        if (GATTC_Write (p_clcb->conn_id, GATT_WRITE, &ccc_value) != GATT_SUCCESS)
-        {
-            GATT_TRACE_ERROR("%s() - write ccc error", __FUNCTION__);
-            gatt_config_ccc_complete(p_clcb);
-        }
+        GATTC_Write(p_clcb->conn_id, GATT_WRITE, &ccc_value);
         break;
     }
 }
@@ -496,7 +462,6 @@ static void gatt_cl_start_config_ccc(tGATT_PROFILE_CLCB *p_clcb)
 *******************************************************************************/
 void GATT_ConfigServiceChangeCCC (BD_ADDR remote_bda, BOOLEAN enable, tBT_TRANSPORT transport)
 {
-    UINT16              conn_id = GATT_INVALID_CONN_ID;
     tGATT_PROFILE_CLCB   *p_clcb = gatt_profile_find_clcb_by_bd_addr (remote_bda, transport);
 
     if (p_clcb == NULL)

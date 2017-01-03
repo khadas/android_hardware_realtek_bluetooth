@@ -84,7 +84,6 @@ static int rtkbt_conf_parse_config(struct config_entry **items, char *content)
     struct config_entry * entry, * head, *end;
 
     char * p;
-    int i = 0;
 
     head = NULL;
     end = NULL;
@@ -218,7 +217,7 @@ int rtkbt_loadconfig()
 #else
 int rtkbt_loadconfig(char * path)
 {
-    int i,res,fd;
+    int res,fd;
     struct stat st;
     char * content = NULL;
     struct config_entry * config = NULL;
@@ -302,7 +301,6 @@ int rtkbt_conf_exit()
 */
 char * rtkbt_api_GetConfig(int id, char * group, char * item)
 {
-    int i;
     struct config_entry * entry;
 
     if(item == NULL)

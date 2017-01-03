@@ -4,7 +4,6 @@
 #include <string.h>
 #include "bt_types.h"
 #include "rtkbt_config.h"
-#include "gki.h"
 #include "hardware/bluetooth.h"
 #include "rtkbt_api_int.h"
 
@@ -25,6 +24,9 @@
 
 #define rtkbt_plugin_getbuf(x) plugin_getbuf((x), __FUNCTION__,__LINE__)
 #define rtkbt_plugin_freebuf(x) plugin_freebuf((x))
+
+
+static const char RTKBT_PLUGIN_MODULE[] = "rtkbt_plugin_module";
 
 /*************************************************************************************
 ** plugin communicate each others with the args defined below
@@ -146,7 +148,7 @@ typedef struct{
     UINT32 (*UIPC_Read)(tUIPC_CH_ID ch_id, UINT16 *p_msg_evt, UINT8 *p_buf, UINT32 len);
     BOOLEAN (*UIPC_Send)(tUIPC_CH_ID ch_id, UINT16 msg_evt, UINT8 *p_buf, UINT16 msglen);
     INT32 (*UIPC_Send_noblock)(tUIPC_CH_ID ch_id, UINT16 msg_evt, UINT8 *p_buf, UINT16 msglen);
-    void (*bta_hh_le_write_rpt)(tBTA_HH_DEV_CB *p_cb, UINT8 srvc_inst,tBTA_GATTC_WRITE_TYPE write_type,tBTA_HH_RPT_TYPE r_type,BT_HDR *p_buf, UINT16 w4_evt );
+    void (*bta_hh_le_write_rpt)(tBTA_HH_DEV_CB *p_cb,tBTA_HH_RPT_TYPE r_type,BT_HDR *p_buf, UINT16 w4_evt );
     tBTM_STATUS (*BTM_ReadInquiryRspTxPower) (tBTM_CMPL_CB *p_cb);
     tBTM_STATUS (*BTM_RegisterForVSEvents) (tBTM_VS_EVT_CB *p_cb, BOOLEAN is_register);
     tBTM_STATUS (*BTM_VendorSpecificCommand)(UINT16 opcode, UINT8 param_len,
@@ -193,7 +195,6 @@ typedef struct{
     int status;
     bt_bdaddr_t * addr;
 }RTKBT_HOOK_HID_STATUS_ARG;
-#include "gki.h"
 #include "bta_hh_int.h"
 #include "bta_dm_int.h"
 #include "bta_gatt_api.h"
@@ -286,10 +287,9 @@ struct PLUGIN_INFO_ST{
 };
 
 #define PLUGIN_INIT(func) \
-    struct PLUGIN_INFO_ST  PLUGIN_INFO = \
+   EXPORT_SYMBOL struct PLUGIN_INFO_ST  PLUGIN_INFO = \
     {   \
         .version = RTKBT_API_VERSION, \
         .init = (func) \
     }
-
 #endif

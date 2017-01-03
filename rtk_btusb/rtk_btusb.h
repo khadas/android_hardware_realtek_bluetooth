@@ -36,24 +36,8 @@
 #include <linux/suspend.h>
 
 #define CONFIG_BLUEDROID        1 /* bleuz 0, bluedroid 1 */
-#define USE_CONTROLLER_BDADDR  1  /* 1:use efuse or bt config, 0:use external file */
 
-#if USE_CONTROLLER_BDADDR
-#else
-#define BDADDR_FILE "/data/misc/bluetooth/bdaddr"
-#define FACTORY_BT_BDADDR_STORAGE_LEN 17
-struct rtk_bt_vendor_config_entry{
-    uint16_t offset;
-    uint8_t entry_len;
-    uint8_t entry_data[0];
-} __attribute__ ((packed));
 
-struct rtk_bt_vendor_config{
-    uint32_t signature;
-    uint16_t data_len;
-    struct rtk_bt_vendor_config_entry entry[0];
-} __attribute__ ((packed));
-#endif
 /* Some Android system may use standard Linux kernel, while
  * standard Linux may also implement early suspend feature.
  * So exclude earysuspend.h from CONFIG_BLUEDROID.
@@ -77,10 +61,22 @@ struct rtk_bt_vendor_config{
 /* when OS suspended, module is still powered,usb is not powered,
  * this may set to 1, and must comply with special patch code.
  */
-#define CONFIG_RESET_RESUME        1
-#define PRINT_CMD_EVENT            0
-#define PRINT_ACL_DATA            0
-#define PRINT_SCO_DATA            0
+#define CONFIG_RESET_RESUME     1
+#define PRINT_CMD_EVENT         0
+#define PRINT_ACL_DATA          0
+#define PRINT_SCO_DATA          0
+
+#define RTKBT_DBG_FLAG          0
+
+#if RTKBT_DBG_FLAG
+#define RTKBT_DBG(fmt, arg...) printk(KERN_INFO "rtk_btusb: " fmt "\n" , ## arg)
+#else
+#define RTKBT_DBG(fmt, arg...)
+#endif
+#define RTKBT_INFO(fmt, arg...) printk(KERN_INFO "rtk_btusb: " fmt "\n" , ## arg)
+#define RTKBT_WARN(fmt, arg...) printk(KERN_WARNING "rtk_btusb: " fmt "\n" , ## arg)
+#define RTKBT_ERR(fmt, arg...) printk(KERN_ERR "rtk_btusb: " fmt "\n" , ## arg)
+
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 33)
 #define HDEV_BUS        hdev->bus
@@ -121,6 +117,8 @@ struct rtk_bt_vendor_config{
 #define HCI_VENDOR_ADD_WAKE_UP_DEVICE       0xfc7b
 #define HCI_VENDOR_REMOVE_WAKE_UP_DEVICE    0xfc7c
 #define HCI_VENDOR_CLEAR_POWERON_LIST       0xfc7d
+
+#define HCI_VENDOR_USB_DISC_HARDWARE_ERROR   0xFF
 
 #define SET_WAKEUP_DEVICE_CONF      "/data/misc/bluedroid/rtkbt_wakeup_ble.conf"
 
@@ -201,6 +199,19 @@ struct rtk_extension_entry {
     uint8_t length;
     uint8_t *data;
 } __attribute__ ((packed));
+
+struct rtk_bt_vendor_config_entry{
+    uint16_t offset;
+    uint8_t entry_len;
+    uint8_t entry_data[0];
+} __attribute__ ((packed));
+
+struct rtk_bt_vendor_config{
+    uint32_t signature;
+    uint16_t data_len;
+    struct rtk_bt_vendor_config_entry entry[0];
+} __attribute__ ((packed));
+
 /* Realtek - For rtk_btusb driver end */
 
 #if CONFIG_BLUEDROID
@@ -548,5 +559,160 @@ static inline void hci_set_drvdata(struct hci_dev *hdev, void *data)
 
 #define CONFIG_MAC_OFFSET_GEN_1_2       (0x3C)      //MAC's OFFSET in config/efuse for realtek generation 1~2 bluetooth chip
 #define CONFIG_MAC_OFFSET_GEN_3PLUS     (0x44)      //MAC's OFFSET in config/efuse for rtk generation 3+ bluetooth chip
+
+/*******************************
+**    Reasil patch code
+********************************/
+#define CMD_CMP_EVT        0x0e
+#define PKT_LEN            300
+#define MSG_TO            1000
+#define PATCH_SEG_MAX    252
+#define DATA_END        0x80
+#define DOWNLOAD_OPCODE    0xfc20
+#define BTOFF_OPCODE    0xfc28
+#define TRUE            1
+#define FALSE            0
+#define CMD_HDR_LEN        sizeof(struct hci_command_hdr)
+#define EVT_HDR_LEN        sizeof(struct hci_event_hdr)
+#define CMD_CMP_LEN        sizeof(struct hci_ev_cmd_complete)
+#define MAX_PATCH_SIZE_24K (1024*24)
+#define MAX_PATCH_SIZE_40K (1024*40)
+
+enum rtk_endpoit {
+    CTRL_EP = 0,
+    INTR_EP = 1,
+    BULK_EP = 2,
+    ISOC_EP = 3
+};
+
+typedef struct {
+    uint16_t    vid;
+    uint16_t    pid;
+    uint16_t    lmp_sub_default;
+    uint16_t    lmp_sub;
+    uint16_t    eversion;
+    char        *mp_patch_name;
+    char        *patch_name;
+    char        *config_name;
+    uint8_t     *fw_cache;
+    int         fw_len;
+    uint16_t    mac_offset;
+    uint32_t    max_patch_size;
+} patch_info;
+
+typedef struct {
+    struct usb_interface    *intf;
+    struct usb_device        *udev;
+    patch_info *patch_entry;
+    int            pipe_in, pipe_out;
+    uint8_t        *send_pkt;
+    uint8_t        *rcv_pkt;
+    struct hci_command_hdr        *cmd_hdr;
+    struct hci_event_hdr        *evt_hdr;
+    struct hci_ev_cmd_complete    *cmd_cmp;
+    uint8_t        *req_para,    *rsp_para;
+    uint8_t        *fw_data;
+    int            pkt_len;
+    int            fw_len;
+} firmware_info;
+
+typedef struct {
+    uint8_t index;
+    uint8_t data[PATCH_SEG_MAX];
+} __attribute__((packed)) download_cp;
+
+typedef struct {
+    uint8_t status;
+    uint8_t index;
+} __attribute__((packed)) download_rp;
+
+
+
+//Define ioctl cmd the same as HCIDEVUP in the kernel
+#define DOWN_FW_CFG  _IOW('H', 201, int)
+
+
+/*  for altsettings*/
+#include <linux/fs.h>
+#define BDADDR_FILE "/data/misc/bluetooth/bdaddr"
+#define FACTORY_BT_BDADDR_STORAGE_LEN 17
+
+static inline int getmacaddr(uint8_t * vnd_local_bd_addr)
+{
+    struct file  *bdaddr_file;
+    mm_segment_t oldfs;
+    char buf[FACTORY_BT_BDADDR_STORAGE_LEN];
+    int32_t i = 0;
+    memset(buf, 0, FACTORY_BT_BDADDR_STORAGE_LEN);
+    bdaddr_file = filp_open(BDADDR_FILE, O_RDONLY, 0);
+    if (IS_ERR(bdaddr_file)){
+        RTKBT_INFO("No Mac Config for BT\n");
+        return -1;
+    }
+    oldfs = get_fs(); set_fs(KERNEL_DS);
+    bdaddr_file->f_op->llseek(bdaddr_file, 0, 0);
+    bdaddr_file->f_op->read(bdaddr_file, buf, FACTORY_BT_BDADDR_STORAGE_LEN, &bdaddr_file->f_pos);
+    for (i = 0; i < 6; i++) {
+     if(buf[3*i]>'9')
+     {
+         if(buf[3*i]>'Z')
+              buf[3*i] -=('a'-'A'); //change  a to A
+         buf[3*i] -= ('A'-'9'-1);
+     }
+     if(buf[3*i+1]>'9')
+     {
+        if(buf[3*i+1]>'Z')
+              buf[3*i+1] -=('a'-'A'); //change  a to A
+         buf[3*i+1] -= ('A'-'9'-1);
+     }
+     vnd_local_bd_addr[5-i] = ((uint8_t)buf[3*i]-'0')*16 + ((uint8_t)buf[3*i+1]-'0');
+    }
+    set_fs(oldfs);
+    filp_close(bdaddr_file, NULL);
+    return 0;
+}
+
+static inline int getAltSettings(patch_info *patch_entry, unsigned short *offset, int max_group_cnt)
+{
+    int n = 0;
+    if(patch_entry)
+        offset[n++] = patch_entry->mac_offset;
+/*
+//sample code, add special settings
+
+    offset[n++] = 0x15B;
+*/
+    return n;
+}
+static inline int getAltSettingVal(patch_info *patch_entry, unsigned short offset, unsigned char * val)
+{
+    int res = 0;
+
+    switch(offset)
+    {
+/*
+//sample code, add special settings
+        case 0x15B:
+            val[0] = 0x0B;
+            val[1] = 0x0B;
+            val[2] = 0x0B;
+            val[3] = 0x0B;
+            res = 4;
+            break;
+*/
+        default:
+            res = 0;
+            break;
+    }
+
+    if((patch_entry)&&(offset == patch_entry->mac_offset)&&(res == 0))
+    {
+        if(getmacaddr(val) == 0){
+            RTKBT_INFO("MAC: %02x:%02x:%02x:%02x:%02x:%02x", val[5], val[4], val[3], val[2], val[1], val[0]);
+            res = 6;
+        }
+    }
+    return res;
+}
 
 #endif /* CONFIG_BLUEDROID */

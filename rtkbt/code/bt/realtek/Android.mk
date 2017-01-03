@@ -1,15 +1,12 @@
-ifeq ($(BOARD_HAVE_BLUETOOTH_RTK),true)
 LOCAL_PATH := $(call my-dir)
 # Common macros inherited by sub-makefiles
 rtk_local_C_INCLUDES := \
         $(LOCAL_PATH)/include \
-        $(LOCAL_PATH)/../osi/include \
+        $(LOCAL_PATH)/.. \
         $(LOCAL_PATH)/../bta/hh \
         $(LOCAL_PATH)/../bta/include \
         $(LOCAL_PATH)/../bta/sys \
         $(LOCAL_PATH)/../bta/dm \
-        $(LOCAL_PATH)/../gki/common \
-        $(LOCAL_PATH)/../gki/ulinux \
         $(LOCAL_PATH)/../include \
         $(LOCAL_PATH)/../stack/include \
         $(LOCAL_PATH)/../stack/l2cap \
@@ -26,10 +23,10 @@ rtk_local_C_INCLUDES := \
         $(LOCAL_PATH)/../brcm/include \
         $(LOCAL_PATH)/../embdrv/sbc/encoder/include \
         $(LOCAL_PATH)/../utils/include \
+        $(LOCAL_PATH)/../osi/include \
         external/tinyxml2 \
-        $(bdroid_C_INCLUDES)
+        $(bluetooth_C_INCLUDES)
 
-rtk_local_CFLAGS += -DBUILDCFG $(bdroid_CFLAGS)  -Wno-error=maybe-uninitialized -Wno-error=uninitialized
+rtk_local_CFLAGS += -DBUILDCFG $(bluetooth_CFLAGS)
 
 include $(call all-subdir-makefiles)
-endif

@@ -39,102 +39,16 @@
 
 #include "rtk_btusb.h"
 
-#if USE_CONTROLLER_BDADDR
-#else
-#include <linux/fs.h>
-#endif
-
-#define VERSION "4.0.4"
+#define RTKBT_RELEASE_NAME "20161229_TV_ANDROID_7.x"
+#define VERSION "4.1.1"
 
 #define SUSPNED_DW_FW 0
 #define SET_WAKEUP_DEVICE 0
 
-#define DBG_FLAG 0
-#if DBG_FLAG
-#define RTKBT_DBG(fmt, arg...) printk(KERN_INFO "rtk_btusb: " fmt "\n" , ## arg)
-#else
-#define RTKBT_DBG(fmt, arg...)
-#endif
-#define RTKBT_INFO(fmt, arg...) printk(KERN_INFO "rtk_btusb: " fmt "\n" , ## arg)
-#define RTKBT_WARN(fmt, arg...) printk(KERN_WARNING "rtk_btusb: " fmt "\n" , ## arg)
-#define RTKBT_ERR(fmt, arg...) printk(KERN_ERR "rtk_btusb: " fmt "\n" , ## arg)
-
-/*******************************
-**    Reasil patch code
-********************************/
-#define CMD_CMP_EVT        0x0e
-#define PKT_LEN            300
-#define MSG_TO            1000
-#define PATCH_SEG_MAX    252
-#define DATA_END        0x80
-#define DOWNLOAD_OPCODE    0xfc20
-#define BTOFF_OPCODE    0xfc28
-#define TRUE            1
-#define FALSE            0
-#define CMD_HDR_LEN        sizeof(struct hci_command_hdr)
-#define EVT_HDR_LEN        sizeof(struct hci_event_hdr)
-#define CMD_CMP_LEN        sizeof(struct hci_ev_cmd_complete)
-#define MAX_PATCH_SIZE_24K (1024*24)
-#define MAX_PATCH_SIZE_40K (1024*40)
 
 static spinlock_t queue_lock;
-enum rtk_endpoit {
-    CTRL_EP = 0,
-    INTR_EP = 1,
-    BULK_EP = 2,
-    ISOC_EP = 3
-};
-
-typedef struct {
-    uint16_t    vid;
-    uint16_t    pid;
-    uint16_t    lmp_sub_default;
-    uint16_t    lmp_sub;
-    uint16_t    eversion;
-    char        *mp_patch_name;
-    char        *patch_name;
-    char        *config_name;
-    uint8_t     *fw_cache;
-    int         fw_len;
-    uint16_t    mac_offset;
-    uint32_t    max_patch_size;
-} patch_info;
-
-typedef struct {
-    struct usb_interface    *intf;
-    struct usb_device        *udev;
-    patch_info *patch_entry;
-    int            pipe_in, pipe_out;
-    uint8_t        *send_pkt;
-    uint8_t        *rcv_pkt;
-    struct hci_command_hdr        *cmd_hdr;
-    struct hci_event_hdr        *evt_hdr;
-    struct hci_ev_cmd_complete    *cmd_cmp;
-    uint8_t        *req_para,    *rsp_para;
-    uint8_t        *fw_data;
-    int            pkt_len;
-    int            fw_len;
-} firmware_info;
-
-typedef struct {
-    uint8_t index;
-    uint8_t data[PATCH_SEG_MAX];
-} __attribute__((packed)) download_cp;
-
-typedef struct {
-    uint8_t status;
-    uint8_t index;
-} __attribute__((packed)) download_rp;
-
-
-
-//Define ioctl cmd the same as HCIDEVUP in the kernel
-#define DOWN_FW_CFG  _IOW('H', 201, int)
-
-#if USE_CONTROLLER_BDADDR
-#else
-uint32_t config_has_bdaddr = 0;
-#endif
+static spinlock_t dlfw_lock;
+static volatile uint16_t    dlfw_dis_state = 0;
 
 #if SUSPNED_DW_FW
 static firmware_info *fw_info_4_suspend = NULL;
@@ -246,6 +160,23 @@ static bool reset_on_close = 0;
 #endif
 
 int download_patch(firmware_info *fw_info, int cached);
+
+static inline int check_set_dlfw_state_value(uint16_t change_value)
+{
+    spin_lock(&dlfw_lock);
+    if(!dlfw_dis_state) {
+        dlfw_dis_state = change_value;
+    }
+    spin_unlock(&dlfw_lock);
+    return dlfw_dis_state;
+}
+
+static inline void set_dlfw_state_value(uint16_t change_value)
+{
+    spin_lock(&dlfw_lock);
+    dlfw_dis_state = change_value;
+    spin_unlock(&dlfw_lock);
+}
 
 #if SUSPNED_DW_FW
 static int download_suspend_patch(firmware_info *fw_info, int cached);
@@ -387,6 +318,7 @@ static void print_command(struct sk_buff *skb)
 struct mutex btchr_mutex;
 static struct sk_buff_head btchr_readq;
 static wait_queue_head_t btchr_read_wait;
+static wait_queue_head_t bt_dlfw_wait;
 static int bt_char_dev_registered;
 static dev_t bt_devid; /* bt char device number */
 static struct cdev bt_char_dev; /* bt character device structure */
@@ -924,7 +856,7 @@ void hci_hardware_error(void)
 {
     struct sk_buff *rtk_skb_copy = NULL;
     int len = 3;
-    uint8_t hardware_err_pkt[3] = {HCI_EVENT_PKT, 0x10, 0x00};
+    uint8_t hardware_err_pkt[4] = {HCI_EVENT_PKT, 0x10, 0x01, HCI_VENDOR_USB_DISC_HARDWARE_ERROR};
 
     rtk_skb_copy = alloc_skb(len, GFP_ATOMIC);
     if (!rtk_skb_copy) {
@@ -1130,13 +1062,20 @@ static unsigned int btchr_poll(struct file *file_p, poll_table *wait)
 }
 static long btchr_ioctl(struct file *file_p,unsigned int cmd, unsigned long arg){
     int ret = 0;
-    struct hci_dev *hdev = hci_dev_get(0);
-	struct btusb_data *data;
+    struct hci_dev *hdev;
+    struct btusb_data *data;
     firmware_info *fw_info;
-	if (!hdev) {
-        RTKBT_ERR("%s: Failed to get hci dev[Null]", __func__);
-        mdelay(URB_CANCELING_DELAY_MS);
-        return POLLOUT | POLLWRNORM;
+
+    if(check_set_dlfw_state_value(1) != 1) {
+        RTKBT_ERR("%s bt controller is disconnecting!", __func__);
+        return 0;
+    }
+
+    hdev = hci_dev_get(0);
+    if(!hdev) {
+        RTKBT_ERR("%s device is NULL!", __func__);
+        set_dlfw_state_value(0);
+        return 0;
     }
     data = GET_DRV_DATA(hdev);
     fw_info = data->fw_info;
@@ -1162,13 +1101,16 @@ static long btchr_ioctl(struct file *file_p,unsigned int cmd, unsigned long arg)
                 goto failed;
             }
             set_bit(HCI_UP, &hdev->flags);
-
+            set_dlfw_state_value(0);
+            wake_up_interruptible(&bt_dlfw_wait);
             return 1;
         default:
             RTKBT_ERR("%s:Failed with wrong Cmd:%d",__func__,cmd);
             goto failed;
         }
     failed:
+        set_dlfw_state_value(0);
+        wake_up_interruptible(&bt_dlfw_wait);
         return ret;
 
 }
@@ -1199,6 +1141,7 @@ static int btchr_init(void)
 
     skb_queue_head_init(&btchr_readq);
     init_waitqueue_head(&btchr_read_wait);
+    init_waitqueue_head(&bt_dlfw_wait);
 
     bt_char_class = class_create(THIS_MODULE, BT_CHAR_DEVICE_NAME);
     if (IS_ERR(bt_char_class)) {
@@ -1409,8 +1352,6 @@ static struct rtk_epatch_entry *get_fw_patch_entry(struct rtk_epatch *epatch_inf
 /*reset_controller is aimed to reset_bt_fw before updata Fw patch*/
 int reset_controller(firmware_info* fw_info)
 {
-
-
     int ret_val;
     RTKBT_ERR("reset_controller");
 
@@ -1638,63 +1579,81 @@ int get_eversion(firmware_info* fw_info)
     return ret_val;
 }
 
-#if USE_CONTROLLER_BDADDR
-#else
-void rtk_parse_config_file(patch_info *patch_entry,unsigned char** config_buf, size_t* filelen, char bt_addr[6])
+void rtk_update_altsettings(patch_info *patch_entry, const unsigned char* org_config_buf, int org_config_len, unsigned char ** new_config_buf_ptr, int *new_config_len_ptr)
 {
-    struct rtk_bt_vendor_config* config = (struct rtk_bt_vendor_config*) *config_buf;
-    uint16_t config_len = config->data_len, temp = 0;
-    struct rtk_bt_vendor_config_entry* entry = config->entry;
-    unsigned int i = 0, j=0;
-    config_has_bdaddr = 0;
+    static unsigned char config_buf[1024];
+    unsigned short offset[256];
+    unsigned char val[256];
 
-    if (config_len != *filelen - sizeof(struct rtk_bt_vendor_config))
+    struct rtk_bt_vendor_config* config = (struct rtk_bt_vendor_config*) config_buf;
+    struct rtk_bt_vendor_config_entry* entry = config->entry;
+
+    int count = 0,temp = 0, i = 0, j;
+
+    memset(config_buf, 0, sizeof(config_buf));
+    memset(offset, 0, sizeof(offset));
+    memset(val, 0, sizeof(val));
+
+    memcpy(config_buf, org_config_buf, org_config_len);
+    *new_config_buf_ptr = config_buf;
+    *new_config_len_ptr = org_config_len;
+
+    count = getAltSettings(patch_entry, offset, sizeof(offset)/sizeof(unsigned short));
+    if(count <= 0){
+        RTKBT_INFO("rtk_update_altsettings: No AltSettings");
+        return;
+    }else{
+        RTKBT_INFO("rtk_update_altsettings: %d AltSettings", count);
+    }
+
+    RTKBT_INFO("ORG Config len=%08x:\n", org_config_len);
+    for(i=0;i<=org_config_len;i+=0x10)
     {
-        RTKBT_ERR("config len(%x) is not right(%x)", config_len, *filelen-sizeof(struct rtk_bt_vendor_config));
+        RTKBT_INFO("%08x: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", i, \
+            config_buf[i], config_buf[i+1], config_buf[i+2], config_buf[i+3], config_buf[i+4], config_buf[i+5], config_buf[i+6], config_buf[i+7], \
+            config_buf[i+8], config_buf[i+9], config_buf[i+10], config_buf[i+11], config_buf[i+12], config_buf[i+13], config_buf[i+14], config_buf[i+15]);
+    }
+
+    if (config->data_len != org_config_len - sizeof(struct rtk_bt_vendor_config))
+    {
+       // RTKBT_ERR("rtk_update_altsettings: config len(%x) is not right(%x)", config->data_len, org_config_len-sizeof(struct rtk_bt_vendor_config));
         return;
     }
 
-    for (i=0; i<config_len;)
+    for (i=0; i<config->data_len;)
     {
-        switch(entry->offset)
+        for(j = 0; j < count;j++)
         {
-            default:
-                RTKBT_INFO("config offset(%x),length(%x)", entry->offset, entry->entry_len);
-                if(entry->offset == patch_entry->mac_offset)
-                {
-                    config_has_bdaddr = 1;
-                    for (j=0; j<entry->entry_len; j++)
-                        entry->entry_data[j] = bt_addr[entry->entry_len - 1- j];
-                    RTKBT_INFO("rtk_parse_config_file: DO NOT USE_CONTROLLER_BDADDR, config has bdaddr");
-                    break;
-                }
-                break;
+            if(entry->offset == offset[j])
+                offset[j] = 0;
+        }
+        if(getAltSettingVal(patch_entry, entry->offset, val) == entry->entry_len){
+            RTKBT_INFO("rtk_update_altsettings: replace %04x[%02x]", entry->offset, entry->entry_len);
+            memcpy(entry->entry_data, val, entry->entry_len);
         }
         temp = entry->entry_len + sizeof(struct rtk_bt_vendor_config_entry);
         i += temp;
         entry = (struct rtk_bt_vendor_config_entry*)((uint8_t*)entry + temp);
     }
-    if(!config_has_bdaddr){
-        RTKBT_INFO("rtk_parse_config_file: DO NOT USE_CONTROLLER_BDADDR, config has no bdaddr");
-        /*
-        *config_buf = krealloc(*config_buf, *filelen+9, GFP_KERNEL);
-        ((struct rtk_bt_vendor_config*)*config_buf)->data_len += 9;
-        *((char*)*config_buf + *filelen) = 0x3c;
-        *((char*)*config_buf + *filelen + 1) = 0x00;
-        *((char*)*config_buf + *filelen + 2) = 0x06;
-        *((char*)*config_buf + *filelen + 3) = bt_addr[5];
-        *((char*)*config_buf + *filelen + 4) = bt_addr[4];
-        *((char*)*config_buf + *filelen + 5) = bt_addr[3];
-        *((char*)*config_buf + *filelen + 6) = bt_addr[2];
-        *((char*)*config_buf + *filelen + 7) = bt_addr[1];
-        *((char*)*config_buf + *filelen + 8) = bt_addr[0];
-        */
-        *filelen += 9;
-        ((struct rtk_bt_vendor_config*)*config_buf)->data_len += 9;
+    for(j = 0; j < count;j++){
+        if(offset[j] == 0)
+            continue;
+        entry->entry_len = getAltSettingVal(patch_entry, offset[j], val);
+        if(entry->entry_len <= 0)
+            continue;
+        entry->offset = offset[j];
+        memcpy(entry->entry_data, val, entry->entry_len);
+        RTKBT_INFO("rtk_update_altsettings: add %04x[%02x]", entry->offset, entry->entry_len);
+        temp = entry->entry_len + sizeof(struct rtk_bt_vendor_config_entry);
+        i += temp;
+        entry = (struct rtk_bt_vendor_config_entry*)((uint8_t*)entry + temp);
     }
-}
-#endif
+    config->data_len = i;
+    *new_config_buf_ptr = config_buf;
+    *new_config_len_ptr = config->data_len+sizeof(struct rtk_bt_vendor_config);
 
+    return;
+}
 
 int load_firmware(firmware_info *fw_info, uint8_t **buff)
 {
@@ -1731,82 +1690,21 @@ int load_firmware(firmware_info *fw_info, uint8_t **buff)
     RTKBT_INFO("%s: Default lmp version = 0x%04x, config file name[%s], "
             "fw file name[%s]", __func__, lmp_version,config_name, fw_name);
 
-/*    ret_val = request_firmware(&cfg, "mp_test", &udev->dev);
-    if (ret_val > 0)
-        config_file_buf = kzalloc(cfg->size, GFP_KERNEL);
-        if (config_file_buf) {
-            memcpy(config_file_buf, cfg->data, cfg->size);
-            use_mp_fw = *config_file_buf;
-            if (1 == use_mp_fw){
-                fw_name = patch_entry->mp_patch_name;
-                RTKBT_WARN("%s: use_mp_fw = %04d, fw file name[%s]", __func__, use_mp_fw,  fw_name);
-            }
-            kfree(config_file_buf);
-            release_firmware(cfg);
-        }
-*/
     ret_val = request_firmware(&cfg, config_name, &udev->dev);
     if (ret_val < 0)
         config_len = 0;
     else {
-#if USE_CONTROLLER_BDADDR
-#else
-    uint8_t vnd_local_bd_addr[6] = {0x00, 0xe0, 0x4c, 0x88, 0x88, 0x88};
-    struct file  *bdaddr_file;
-    mm_segment_t oldfs;
-    char buf[FACTORY_BT_BDADDR_STORAGE_LEN];
-    int32_t i = 0;
-    memset(buf, 0, FACTORY_BT_BDADDR_STORAGE_LEN);
-    bdaddr_file = filp_open(BDADDR_FILE, O_RDONLY, 0);
-    if (IS_ERR(bdaddr_file)){
-        // if file not exist, we continue the process without update bd_addr
-      RTKBT_ERR("Failed to open: %s\n", BDADDR_FILE);
-      config_has_bdaddr = 1;        //for no bdaddr_file,dont add 3c to config_file_buf
-    } else {
-      oldfs = get_fs(); set_fs(KERNEL_DS);
-      bdaddr_file->f_op->llseek(bdaddr_file, 0, 0);
-      bdaddr_file->f_op->read(bdaddr_file, buf, FACTORY_BT_BDADDR_STORAGE_LEN, &bdaddr_file->f_pos);
-      for (i = 0; i < 6; i++) {
-         if(buf[3*i]>'9')
-         {
-             if(buf[3*i]>'Z')
-                  buf[3*i] -=('a'-'A'); //change  a to A
-             buf[3*i] -= ('A'-'9'-1);
-         }
-         if(buf[3*i+1]>'9')
-         {
-            if(buf[3*i+1]>'Z')
-                  buf[3*i+1] -=('a'-'A'); //change  a to A
-             buf[3*i+1] -= ('A'-'9'-1);
-         }
-         vnd_local_bd_addr[i] = ((uint8_t)buf[3*i]-'0')*16 + ((uint8_t)buf[3*i+1]-'0');
-      }
-      set_fs(oldfs);
-      filp_close(bdaddr_file, NULL);
-      rtk_parse_config_file(patch_entry, (unsigned char**)(&(cfg->data)), &(((struct firmware*)(cfg))->size), vnd_local_bd_addr);
-    }
-#endif
-        config_file_buf = vmalloc(cfg->size);
-        RTKBT_INFO("%s: epatch_buf = vmalloc(cfg->size)", __func__);
-        if (!config_file_buf)
-            return -ENOMEM;
-        memcpy(config_file_buf, cfg->data, cfg->size);
-        config_len = cfg->size;
-#if USE_CONTROLLER_BDADDR
-#else
-    if(!config_has_bdaddr){
-        RTKBT_INFO("%s,config has no bdaddress,add to config_file_buf",__FUNCTION__);
-        *((char*)config_file_buf + cfg->size -9) = patch_entry->mac_offset;
-        *((char*)config_file_buf + cfg->size -8) = 0x00;
-        *((char*)config_file_buf + cfg->size -7) = 0x06;
-        *((char*)config_file_buf + cfg->size -6) = vnd_local_bd_addr[5];
-        *((char*)config_file_buf + cfg->size -5) = vnd_local_bd_addr[4];
-        *((char*)config_file_buf + cfg->size -4) = vnd_local_bd_addr[3];
-        *((char*)config_file_buf + cfg->size -3) = vnd_local_bd_addr[2];
-        *((char*)config_file_buf + cfg->size -2) = vnd_local_bd_addr[1];
-        *((char*)config_file_buf + cfg->size -1) = vnd_local_bd_addr[0];
+        int i;
+        rtk_update_altsettings(patch_entry, cfg->data, cfg->size, &config_file_buf, &config_len);
+
+        RTKBT_INFO("Final Config len=%08x:\n", config_len);
+        for(i=0;i<=config_len;i+=0x10)
+        {
+            RTKBT_INFO("%08x: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", i, \
+                config_file_buf[i], config_file_buf[i+1], config_file_buf[i+2], config_file_buf[i+3], config_file_buf[i+4], config_file_buf[i+5], config_file_buf[i+6], config_file_buf[i+7], \
+                config_file_buf[i+8], config_file_buf[i+9], config_file_buf[i+10], config_file_buf[i+11], config_file_buf[i+12], config_file_buf[i+13], config_file_buf[i+14], config_file_buf[i+15]);
         }
-#endif
+
         release_firmware(cfg);
     }
 
@@ -1943,12 +1841,6 @@ int load_firmware(firmware_info *fw_info, uint8_t **buff)
         }
     }
 
-    if (config_file_buf){
-        vfree(config_file_buf);
-        config_file_buf = NULL;
-        RTKBT_INFO("%s: vfree(config_file_buf)", __func__);
-        }
-
     RTKBT_INFO("%s: fw%s exists, config file%s exists", __func__,
             (buf_len > 0) ? "" : " not", (config_len > 0) ? "":" not");
 
@@ -1960,11 +1852,6 @@ int load_firmware(firmware_info *fw_info, uint8_t **buff)
     return buf_len;
 
 fw_fail:
-    if (config_file_buf){
-        vfree(config_file_buf);
-        config_file_buf = NULL;
-        RTKBT_INFO("%s: fw_fail vfree(config_file_buf)", __func__);
-        }
     return ret_val;
 }
 
@@ -2219,7 +2106,7 @@ int download_data(firmware_info *fw_info)
     frag_len = PATCH_SEG_MAX;
 
     for (i = 0; i < frag_num; i++) {
-        cmd_para->index = i;
+        cmd_para->index = i?((i-1)%0x7f+1):0;
         if (i == (frag_num - 1)) {
             cmd_para->index |= DATA_END;
             frag_len = fw_info->fw_len % PATCH_SEG_MAX;
@@ -3617,7 +3504,9 @@ static int btusb_probe(struct usb_interface *intf, const struct usb_device_id *i
     data->udev = udev;
     data->intf = intf;
 
+    dlfw_dis_state = 0;
     spin_lock_init(&queue_lock);
+    spin_lock_init(&dlfw_lock);
     spin_lock_init(&data->lock);
 
     INIT_WORK(&data->work, btusb_work);
@@ -3744,11 +3633,15 @@ end:
 
 static void btusb_disconnect(struct usb_interface *intf)
 {
-    struct btusb_data *data = usb_get_intfdata(intf);
+    struct btusb_data *data;
     struct hci_dev *hdev = NULL;
+
+    wait_event_interruptible(bt_dlfw_wait, (check_set_dlfw_state_value(2) == 2));
 
     RTKBT_INFO("%s: usb_interface %p, bInterfaceNumber %d",
             __func__, intf, intf->cur_altsetting->desc.bInterfaceNumber);
+
+    data = usb_get_intfdata(intf);
 
     if (intf->cur_altsetting->desc.bInterfaceNumber != 0)
         return;
@@ -3798,6 +3691,7 @@ static void btusb_disconnect(struct usb_interface *intf)
     hci_free_dev(hdev);
     rtk_free(data);
     data = NULL;
+    set_dlfw_state_value(0);
 }
 
 #ifdef CONFIG_PM
@@ -3960,38 +3854,34 @@ static struct usb_driver btusb_driver = {
 #endif
 };
 
-extern void set_usb_bt_power(int is_power);
 static int __init btusb_init(void)
 {
-	int err;
+    int err;
 
-	RTKBT_INFO("Realtek Bluetooth USB driver module init, version %s", VERSION);
-	set_usb_bt_power(1);
+    RTKBT_INFO("RTKBT_RELEASE_NAME: %s",RTKBT_RELEASE_NAME);
+    RTKBT_INFO("Realtek Bluetooth USB driver module init, version %s", VERSION);
 #if CONFIG_BLUEDROID
-	err = btchr_init();
-	if (err < 0) {
-		/* usb register will go on, even bt char register failed */
-		RTKBT_ERR("Failed to register usb char device interfaces");
-	} else
-		bt_char_dev_registered = 1;
+    err = btchr_init();
+    if (err < 0) {
+        /* usb register will go on, even bt char register failed */
+        RTKBT_ERR("Failed to register usb char device interfaces");
+    } else
+        bt_char_dev_registered = 1;
 #endif
-	err = usb_register(&btusb_driver);
-	if (err < 0) {
-		RTKBT_ERR("Failed to register RTK bluetooth USB driver");
-		set_usb_bt_power(0);
-	}
-	return err;
+    err = usb_register(&btusb_driver);
+    if (err < 0)
+        RTKBT_ERR("Failed to register RTK bluetooth USB driver");
+    return err;
 }
 
 static void __exit btusb_exit(void)
 {
-	RTKBT_INFO("Realtek Bluetooth USB driver module exit");
+    RTKBT_INFO("Realtek Bluetooth USB driver module exit");
 #if CONFIG_BLUEDROID
-	if (bt_char_dev_registered > 0)
-		btchr_exit();
+    if (bt_char_dev_registered > 0)
+        btchr_exit();
 #endif
-	usb_deregister(&btusb_driver);
-	set_usb_bt_power(0);
+    usb_deregister(&btusb_driver);
 }
 
 module_init(btusb_init);
