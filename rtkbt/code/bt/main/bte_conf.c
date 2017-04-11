@@ -21,7 +21,11 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-
+#include <stdlib.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <sys/types.h>
 #include "bta_api.h"
 #include "osi/include/compat.h"
 #include "osi/include/config.h"
@@ -34,6 +38,95 @@ extern bool bluetooth_rtk_h5_flag;
 #endif
 
 #ifdef BLUETOOTH_RTK
+
+#define USB_DEVICE_DIRECTORY  "/sys/bus/usb/devices"
+#define DEBUG_SCAN_USB     FALSE
+
+int Check_Key_Value(char* path,char* key,int value){
+    FILE *fp;
+    char newpath[100];
+    char string_get[6];
+    int value_int = 0;
+    memset(newpath,0,100);
+    sprintf(newpath,"%s/%s",path,key);
+    if((fp=fopen(newpath,"r"))!=NULL){
+        memset(string_get,0,6);
+        if(fgets(string_get,5,fp)!=NULL)
+            if(DEBUG_SCAN_USB)
+                ALOGE("string_get %s =%s\n",key,string_get);
+        fclose(fp);
+        value_int = strtol(string_get,NULL,16);
+        if(value_int == value)
+            return 1;
+    }
+    return 0;
+}
+
+int Scan_Usb_Devices_For_RTK(char* path){
+    char newpath[100];
+    char subpath[100];
+    DIR * pdir;
+    DIR * newpdir;
+    struct dirent * ptr;
+    struct dirent * newptr;
+    struct stat filestat;
+    struct stat subfilestat;
+    if(stat(path, &filestat) != 0){
+        ALOGE("The file or path(%s) can not be get stat!\n", newpath);
+        return -1;
+    }
+    if((filestat.st_mode & S_IFDIR) != S_IFDIR){
+        ALOGE("(%s) is not be a path!\n", path);
+        return -1;
+    }
+    pdir =opendir(path);
+    /*enter sub direc*/
+    while((ptr = readdir(pdir))!=NULL){
+        if(strcmp(ptr->d_name, ".") == 0 || strcmp(ptr->d_name, "..") == 0)
+            continue;
+        memset(newpath,0,100);
+        sprintf(newpath,"%s/%s", path,ptr->d_name);
+        if(DEBUG_SCAN_USB)
+            ALOGE("The file or path(%s)\n", newpath);
+        if(stat(newpath, &filestat) != 0){
+            ALOGE("The file or path(%s) can not be get stat!\n", newpath);
+            continue;
+        }
+        /* Check if it is path. */
+        if((filestat.st_mode & S_IFDIR) == S_IFDIR){
+            if(!Check_Key_Value(newpath,"idVendor",0x0bda))
+                continue;
+            newpdir =opendir(newpath);
+            /*read sub directory*/
+            while((newptr = readdir(newpdir))!=NULL){
+                if(strcmp(newptr->d_name, ".") == 0 || strcmp(newptr->d_name, "..") == 0)
+                    continue;
+                memset(subpath,0,100);
+                sprintf(subpath,"%s/%s", newpath,newptr->d_name);
+                if(DEBUG_SCAN_USB)
+                    ALOGE("The file or path(%s)\n", subpath);
+                if(stat(subpath, &subfilestat) != 0){
+                    ALOGE("The file or path(%s) can not be get stat!\n", newpath);
+                    continue;
+                }
+                 /* Check if it is path. */
+                if((subfilestat.st_mode & S_IFDIR) == S_IFDIR){
+                    if(Check_Key_Value(subpath,"bInterfaceClass",0xe0) && \
+                        Check_Key_Value(subpath,"bInterfaceSubClass",0x01) && \
+                        Check_Key_Value(subpath,"bInterfaceProtocol",0x01)){
+                        closedir(newpdir);
+                        closedir(pdir);
+                        return 1;
+                    }
+                }
+            }
+            closedir(newpdir);
+        }
+    }
+    closedir(pdir);
+    return 0;
+}
+
 void bte_load_rtkbt_conf(const char *path)
 {
     assert(path != NULL);
@@ -46,7 +139,21 @@ void bte_load_rtkbt_conf(const char *path)
       return;
     }
     memset(bt_hci_device_node, 0, sizeof(bt_hci_device_node));
+    /*0.check rtkbt.conf*/
     strlcpy(bt_hci_device_node, config_get_string(config, CONFIG_DEFAULT_SECTION, "BtDeviceNode","/dev/rtk_btusb"), sizeof(bt_hci_device_node));
+    if(bt_hci_device_node[0]=='?'){
+        /*1.Scan_Usb_Device*/
+        if(Scan_Usb_Devices_For_RTK(USB_DEVICE_DIRECTORY) == 0x01)
+            strlcpy(bt_hci_device_node,"/dev/rtk_btusb", sizeof(bt_hci_device_node));
+        else{
+            int i = 0;
+            while(bt_hci_device_node[i]!= '\0'){
+                bt_hci_device_node[i] = bt_hci_device_node[i+1];
+                i++;
+            }
+        }
+    }
+    ALOGI("bt_hci_device_node   = %s \n",bt_hci_device_node);
     config_free(config);
     if(!strcmp(bt_hci_device_node, "/dev/rtk_btusb")){
         bluetooth_rtk_h5_flag = FALSE;

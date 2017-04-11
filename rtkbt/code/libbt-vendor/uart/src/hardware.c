@@ -27,7 +27,7 @@
  ******************************************************************************/
 
 #define LOG_TAG "bt_hwcfg"
-#define RTKBT_RELEASE_NAME "20161229_TV_ANDROID_7.x"
+#define RTKBT_RELEASE_NAME "20170324_TV_ANDROID_7.x"
 
 #include <utils/Log.h>
 #include <sys/types.h>

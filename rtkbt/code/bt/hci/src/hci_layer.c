@@ -307,6 +307,10 @@ static future_t *shut_down() {
     thread_join(thread);
   }
 
+#ifdef BLUETOOTH_RTK_COEX
+    rtk_parse_manager->rtk_parse_cleanup();
+#endif
+
   fixed_queue_free(command_queue, osi_free);
   command_queue = NULL;
   fixed_queue_free(packet_queue, buffer_allocator->free);
@@ -328,9 +332,6 @@ static future_t *shut_down() {
 
   low_power_manager->cleanup();
   hal->close();
-#ifdef BLUETOOTH_RTK_COEX
-  rtk_parse_manager->rtk_parse_cleanup();
-#endif
 
   // Turn off the chip
   int power_state = BT_VND_PWR_OFF;

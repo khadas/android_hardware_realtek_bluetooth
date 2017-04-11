@@ -33,6 +33,7 @@
 *
 ******************************************************************************/
 #define LOG_TAG "rtk_parse"
+#define RTKBT_RELEASE_NAME "20170324_TV_ANDROID_7.x"
 
 #include <utils/Log.h>
 #include <stdlib.h>
@@ -61,10 +62,12 @@
 #include "bt_hci_bdroid.h"
 #include "hci_layer.h"
 
+
 #include "rtk_parse.h"
 #include "hcidefs.h"
+#include <sys/syscall.h>
 
-#define RTK_VERSION "2.0"
+#define RTK_VERSION "2.1"
 
 char invite_req[] = "INVITE_REQ";
 char invite_rsp[] = "INVITE_RSP";
@@ -251,19 +254,6 @@ typedef struct RTK_PROF {
     //uint8_t  le_profile_index;
 }tRTK_PROF;
 
-typedef struct HCI_LINKSTATUS_REPORT {
-    uint8_t     cmd_index;
-    uint8_t     cmd_length;
-    uint8_t     link_status;
-    uint8_t     retry_cnt;
-    uint8_t     rssi;
-    uint8_t     mailbox_info;
-
-    uint16_t     acl_throughput;
-    uint8_t     bitpool;
-
-}tHCI_LINKSTATUS_REPORT;
-
 typedef struct HCI_RETURN_PARAMETER_MAILBOX_REGISTER {
     uint8_t  type;
     uint32_t offset;
@@ -278,7 +268,7 @@ typedef struct HCI_EVENT_BT_INFO_CONTROL {
 
 tRTK_PROF rtk_prof;
 volatile int poweroff_allowed = 0;
-uint8_t coex_log_enable = 1;
+uint8_t coex_log_enable = 0;
 static const hci_t *hci_interface;
 
 static const allocator_t *buffer_allocator;
@@ -317,12 +307,15 @@ static void LogMsg(const char *fmt_str, ...)
 static timer_t OsAllocateTimer(int signo)
 {
     struct sigevent sigev;
-    timer_t timerid;
+    timer_t timerid = (timer_t)-1;
 
     // Create the POSIX timer to generate signo
-    sigev.sigev_notify = SIGEV_SIGNAL;
+    sigev.sigev_notify = SIGEV_THREAD_ID;
+    sigev.sigev_notify_thread_id = syscall(__NR_gettid);
     sigev.sigev_signo = signo;
     sigev.sigev_value.sival_ptr = &timerid;
+
+    ALOGE("OsAllocateTimer rtk_parse sigev.sigev_notify_thread_id = syscall(__NR_gettid)!");
 
     //Create the Timer using timer_create signal
     if (timer_create(CLOCK_REALTIME, &sigev, &timerid) == 0)
@@ -332,7 +325,7 @@ static timer_t OsAllocateTimer(int signo)
     else
     {
         ALOGE("timer_create error!");
-        return NULL;
+        return (timer_t)-1;
     }
 }
 
@@ -749,6 +742,7 @@ tRTK_PROF_INFO* find_profile_by_handle_dcid_scid(tRTK_PROF* h5, uint16_t handle,
 
 void rtk_vendor_cmd_to_fw(uint16_t opcode, uint8_t parameter_len, uint8_t* parameter)
 {
+    uint8_t temp = 0;
     HC_BT_HDR  *p_buf=NULL;
 
     if(buffer_allocator)
@@ -774,7 +768,10 @@ void rtk_vendor_cmd_to_fw(uint16_t opcode, uint8_t parameter_len, uint8_t* param
         memcpy(p, parameter, parameter_len);
     }
     if(hci_interface)
+    {
+            ALOGE("hci_interface->transmit_command Opcode:%x",opcode);
             hci_interface->transmit_command((BT_HDR *)p_buf, NULL,NULL,NULL);
+    }
     return ;
 }
 
@@ -921,6 +918,7 @@ void rtk_check_del_timer(int8_t profile_index)
 void update_profile_connection(tRTK_CONN_PROF * phci_conn, int8_t profile_index, uint8_t is_add)
 {
     uint8_t need_update = FALSE;
+    int kk = 0;
 
     LogMsg("update_profile_connection: is_add=%d, psm_index=%d", is_add, profile_index);
     if (profile_index < 0)
@@ -983,6 +981,8 @@ void update_profile_connection(tRTK_CONN_PROF * phci_conn, int8_t profile_index,
     if(need_update)
     {
         LogMsg("update_profile_connection: rtk_h5.profile_bitmap = %x", rtk_prof.profile_bitmap);
+        for(kk=0; kk<8; kk++)
+            LogMsg("update_profile_connection: rtk_h5.profile_refcount[%d] = %d", kk, rtk_prof.profile_refcount[kk]);
         rtk_notify_profileinfo_to_fw();
     }
 }
@@ -1136,6 +1136,7 @@ uint8_t handle_l2cap_discon_req(uint16_t handle, uint16_t dcid, uint16_t scid, u
 void packets_count(uint16_t handle, uint16_t scid, uint16_t length, uint8_t direction)
 {
     tRTK_PROF_INFO* prof_info = NULL;
+    uint8_t profile_type;
 
     tRTK_CONN_PROF* hci_conn = find_connection_by_handle(&rtk_prof, handle);
     if(NULL == hci_conn)
@@ -1286,7 +1287,7 @@ int udpsocket_send(char *tx_msg, int msg_size)
     int n; /* message byte size */
 
     LogMsg("udpsocket_send tx_msg:%s",tx_msg);
-    n = sendto(rtk_prof.udpsocket, tx_msg, msg_size, MSG_DONTWAIT, (struct sockaddr *) &rtk_prof.client_addr, sizeof(rtk_prof.client_addr));
+    n = sendto(rtk_prof.udpsocket, tx_msg, msg_size, 0, (struct sockaddr *) &rtk_prof.client_addr, sizeof(rtk_prof.client_addr));
     if (n < 0)
     {
         ALOGE("ERROR in sendto");
@@ -1297,7 +1298,9 @@ int udpsocket_send(char *tx_msg, int msg_size)
 
 int udpsocket_recv(uint8_t *recv_msg, uint8_t *msg_size)
 {
+    struct hostent *hostp;  /* client host info */
     char buf[MAX_PAYLOAD];  /* message buf */
+    char *hostaddrp;        /* dotted decimal host addr string */
     int n;                  /* message byte size */
     struct sockaddr_in recv_addr;
     socklen_t clientlen = sizeof(recv_addr);
@@ -1309,7 +1312,7 @@ int udpsocket_recv(uint8_t *recv_msg, uint8_t *msg_size)
 
     bzero(buf, MAX_PAYLOAD);
 
-    while (poll(&pfd, 1, 1000) <= 0 && rtk_prof.udpsocket_recv_thread_running > 0) {
+    while (poll(&pfd, 1, 1000) <= 0) {
         if (rtk_prof.udpsocket_recv_thread_running ==0) {
             LogMsg("SIGUSR2 should have caught us before this");
             return -1;
@@ -1317,7 +1320,7 @@ int udpsocket_recv(uint8_t *recv_msg, uint8_t *msg_size)
     }
 
 
-    n = recvfrom(rtk_prof.udpsocket, buf, MAX_PAYLOAD, MSG_DONTWAIT, (struct sockaddr *) &recv_addr, &clientlen);
+    n = recvfrom(rtk_prof.udpsocket, buf, MAX_PAYLOAD, 0, (struct sockaddr *) &recv_addr, &clientlen);
     if (n < 0) {
         ALOGE("ERROR in recvfrom");
         return -1;
@@ -1381,6 +1384,9 @@ void rtk_notify_afhmap_to_wifi()
     memcpy(p, rtk_prof.afh_map, 10);
 
     LogMsg("afhmap, piconet_id is 0x%x, map type is 0x%x", rtk_prof.piconet_id, rtk_prof.mode);
+    uint8_t kk = 0;
+    for(kk=0; kk < 10; kk++)
+        LogMsg("afhmap data[%d] is 0x%x", kk, rtk_prof.afh_map[kk]);
 
     if(udpsocket_send(p_buf, para_length + HCI_CMD_PREAMBLE_SIZE) < 0)
         ALOGE("rtk_notify_afhmap_to_wifi: udpsocket send error");
@@ -1426,6 +1432,12 @@ void rtk_notify_btoperation_to_wifi(uint8_t operation, uint8_t append_data_lengt
         memcpy(p, append_data, append_data_length);
 
     LogMsg("btoperation, opration is 0x%x, append_data_length is 0x%x", operation, append_data_length);
+    uint8_t kk = 0;
+    if(append_data_length)
+    {
+        for(kk=0; kk < append_data_length; kk++)
+            LogMsg("append data is 0x%x", *(append_data+kk));
+    }
 
     if(udpsocket_send(p_buf, para_length + HCI_CMD_PREAMBLE_SIZE) < 0)
         ALOGE("rtk_notify_btoperation_to_wifi: udpsocket send error");
@@ -1435,6 +1447,7 @@ void rtk_notify_info_to_wifi(uint8_t reason, uint8_t length, uint8_t* report_inf
 {
     uint8_t para_length = 4 + length;
     char p_buf[para_length + HCI_CMD_PREAMBLE_SIZE];
+    int i;
 
     if(!rtk_prof.wifi_on)
         return;
@@ -1454,17 +1467,8 @@ void rtk_notify_info_to_wifi(uint8_t reason, uint8_t length, uint8_t* report_inf
     LogMsg("bt info, reason is 0x%x, info length is 0x%x", reason, length);
     if(length)
     {
-        tHCI_LINKSTATUS_REPORT *report = (tHCI_LINKSTATUS_REPORT *)report_info;
-        LogMsg("bt info, cmd_index is %x", report->cmd_index);
-        LogMsg("bt info, cmd_length is %x", report->cmd_length);
-        LogMsg("bt info, link_status is %x", report->link_status);
-        LogMsg("bt info, retry_cnt is %x", report->retry_cnt);
-        LogMsg("bt info, rssi is %x", report->rssi);
-        LogMsg("bt info, mailbox_info is %x", report->mailbox_info);
-        LogMsg("bt info, acl_throughtput is %x", report->acl_throughput);
-
-        LogMsg("bt info, bitpool is %x", report->bitpool);
-
+        for(i=0;i<length;i++)
+            LogMsg("bt info[%d]: %02x", i, report_info[i]); 
     }
 
     if(udpsocket_send(p_buf, para_length + HCI_CMD_PREAMBLE_SIZE) < 0)
@@ -1534,6 +1538,7 @@ static void rtk_handle_bt_coex_control(uint8_t* p)
 
         case IGNORE_WLAN_ACTIVE_CONTROL:
         {
+            uint8_t opcode_len = *p++;
             uint8_t value = *p++;
             uint8_t temp_cmd[3];
             temp_cmd[0] = HCI_VENDOR_SUB_CMD_BT_ENABLE_IGNORE_WLAN_ACT_CMD;
@@ -1545,6 +1550,7 @@ static void rtk_handle_bt_coex_control(uint8_t* p)
 
         case LNA_CONSTRAIN_CONTROL:
         {
+            uint8_t opcode_len = *p++;
             uint8_t value = *p++;
             uint8_t temp_cmd[3];
             temp_cmd[0] = HCI_VENDOR_SUB_CMD_SET_BT_LNA_CONSTRAINT;
@@ -1556,6 +1562,7 @@ static void rtk_handle_bt_coex_control(uint8_t* p)
 
         case BT_POWER_DECREASE_CONTROL:
         {
+            uint8_t opcode_len = *p++;
             uint8_t power_decrease = *p++;
             uint8_t temp_cmd[3];
             temp_cmd[0] = HCI_VENDOR_SUB_CMD_WIFI_FORCE_TX_POWER_CMD;
@@ -1567,6 +1574,7 @@ static void rtk_handle_bt_coex_control(uint8_t* p)
 
         case BT_PSD_MODE_CONTROL:
         {
+            uint8_t opcode_len = *p++;
             uint8_t psd_mode = *p++;
             uint8_t temp_cmd[3];
             temp_cmd[0] = HCI_VENDOR_SUB_CMD_SET_BT_PSD_MODE;
@@ -1578,6 +1586,7 @@ static void rtk_handle_bt_coex_control(uint8_t* p)
 
         case WIFI_BW_CHNL_NOTIFY:
         {
+            uint8_t opcode_len = *p++;
             uint8_t temp_cmd[5];
             temp_cmd[0] = HCI_VENDOR_SUB_CMD_WIFI_CHANNEL_AND_BANDWIDTH_CMD;
             temp_cmd[1] = 3;
@@ -1588,6 +1597,7 @@ static void rtk_handle_bt_coex_control(uint8_t* p)
 
         case QUERY_BT_AFH_MAP:
         {
+            uint8_t opcode_len = *p++;
             rtk_prof.piconet_id = *p++;
             rtk_prof.mode = *p++;
             uint8_t temp_cmd[4];
@@ -1601,6 +1611,7 @@ static void rtk_handle_bt_coex_control(uint8_t* p)
 
         case BT_REGISTER_ACCESS:
         {
+            uint8_t opcode_len = *p++;
             uint8_t access_type = *p++;
             if(access_type == 0) //read
             {
@@ -1675,6 +1686,7 @@ void rtk_handle_event_from_wifi(uint8_t* msg)
 
     if(event_code == 0xFE)
     {
+        uint8_t total_length = *p++;
         uint8_t extension_event = *p++;
         switch(extension_event)
         {
@@ -1731,6 +1743,7 @@ static void udpsocket_receive_thread(void *arg)
     actions.sa_flags = 0;
     actions.sa_handler = udpsocket_receive_thread_exit_handler;
 
+    int rc = sigaction(SIGUSR2,&actions,NULL);
 
     LogMsg("udpsocket_receive_thread started");
     prctl(PR_SET_NAME, (unsigned long)"udpsocket_receive_thread", 0, 0, 0);
@@ -1738,8 +1751,7 @@ static void udpsocket_receive_thread(void *arg)
     while(rtk_prof.udpsocket_recv_thread_running)
     {
         memset(msg_recv, 0 , MAX_PAYLOAD);
-        udpsocket_recv(msg_recv, &recv_length);
-         if (udpsocket_recv(msg_recv, &recv_length) == 0)
+        if (udpsocket_recv(msg_recv, &recv_length) == 0)
             rtk_handle_event_from_wifi(msg_recv);
     }
 
@@ -1829,7 +1841,10 @@ int stop_udpsocket_receive_thread()
         LogMsg("data thread is running, stop it");
 
         //add for pthread_cancel
-
+        if ((result = pthread_kill(rtk_prof.thread_data, SIGUSR2)) != 0)
+        {
+            ALOGE("error cancelling data thread");
+        }
         rtk_prof.udpsocket_recv_thread_running = 0;
 
         if ((result = pthread_join(rtk_prof.thread_data, NULL)) < 0)
@@ -1880,6 +1895,7 @@ int create_netlink_socket()
 
 void rtk_parse_init(hci_t *hci_if)
 {
+    ALOGI("RTKBT_RELEASE_NAME: %s",RTKBT_RELEASE_NAME);
     LogMsg("rtk_profile_init, version: %s", RTK_VERSION);
 
     pthread_mutex_init(&rtk_prof.profile_mutex, NULL);
@@ -1933,7 +1949,11 @@ static void rtk_handle_vender_mailbox_cmp_evt(uint8_t* p, uint8_t len)
     {
         case HCI_VENDOR_SUB_CMD_BT_REPORT_CONN_SCO_INQ_INFO:
             if(status == 0) //success
-                rtk_notify_info_to_wifi(POLLING_RESPONSE, sizeof(tHCI_LINKSTATUS_REPORT), (uint8_t*)p);
+            {
+                if((len-5) != 8)
+                    LogMsg("rtk_handle_vender_mailbox_cmp_evt:HCI_VENDOR_SUB_CMD_BT_REPORT_CONN_SCO_INQ_INFO len=%d", len);
+                rtk_notify_info_to_wifi(POLLING_RESPONSE, (len-5), (uint8_t*)p);
+            }
             break;
 
         case HCI_VENDOR_SUB_CMD_WIFI_CHANNEL_AND_BANDWIDTH_CMD:
@@ -2433,7 +2453,9 @@ void rtk_parse_internal_event_intercept(uint8_t *p_msg)
             if(subcode == HCI_VENDOR_PTA_AUTO_REPORT_EVENT)
             {
                 LogMsg("notify wifi driver with autoreport data");
-                rtk_notify_info_to_wifi(AUTO_REPORT, sizeof(tHCI_LINKSTATUS_REPORT), (uint8_t *)p);
+                if((len-2) != 8)
+                    LogMsg("rtk_parse_internal_event_intercept:HCI_VENDOR_SPECIFIC_EVT:HCI_VENDOR_PTA_AUTO_REPORT_EVENT len=%d", len);
+                rtk_notify_info_to_wifi(AUTO_REPORT, (len-2), (uint8_t *)p);
             }
             break;
         }

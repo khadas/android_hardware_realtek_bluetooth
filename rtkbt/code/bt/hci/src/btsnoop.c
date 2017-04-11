@@ -58,6 +58,7 @@ static bool is_logging;
 static bool logging_enabled_via_api;
 #ifdef BLUETOOTH_RTK
 extern unsigned int rtkbt_logfilter;
+pthread_mutex_t hci_log_lock;
 #endif
 // TODO(zachoverflow): merge btsnoop and btsnoop_net together
 void btsnoop_net_open();
@@ -73,12 +74,18 @@ static future_t *start_up(void) {
   module_started = true;
   update_logging();
 
+#ifdef BLUETOOTH_RTK
+  pthread_mutex_init(&hci_log_lock, NULL);
+#endif
   return NULL;
 }
 
 static future_t *shut_down(void) {
   module_started = false;
   update_logging();
+#ifdef BLUETOOTH_RTK
+    pthread_mutex_destroy(&hci_log_lock);
+#endif
 
   return NULL;
 }
@@ -148,7 +155,11 @@ static uint64_t btsnoop_timestamp(void) {
   gettimeofday(&tv, NULL);
 
   // Timestamp is in microseconds.
+#ifdef BLUETOOTH_RTK
+  uint64_t timestamp = tv.tv_sec * 1000LL * 1000LL;
+#else
   uint64_t timestamp = tv.tv_sec * 1000 * 1000LL;
+#endif
   timestamp += tv.tv_usec;
   timestamp += BTSNOOP_EPOCH_DELTA;
   return timestamp;
@@ -205,6 +216,12 @@ static void btsnoop_write_packet(packet_type_t type, const uint8_t *packet, bool
   int length;
   int flags;
   int drops = 0;
+
+#ifdef BLUETOOTH_RTK
+  //make sure only one writer at any time
+  pthread_mutex_lock(&hci_log_lock);
+#endif
+
   switch (type) {
     case kCommandPacket:
       length_he = packet[2] + 4;
@@ -242,4 +259,8 @@ static void btsnoop_write_packet(packet_type_t type, const uint8_t *packet, bool
   btsnoop_write(&time_lo, 4);
   btsnoop_write(&type, 1);
   btsnoop_write(packet, length_he - 1);
+#ifdef BLUETOOTH_RTK
+  pthread_mutex_unlock(&hci_log_lock);
+#endif
+
 }

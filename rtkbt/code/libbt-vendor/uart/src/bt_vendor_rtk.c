@@ -26,7 +26,7 @@
 
 #undef NDEBUG
 #define LOG_TAG "bt_vendor_uart"
-#define RTKBT_RELEASE_NAME	"Test"
+#define RTKBT_RELEASE_NAME "20170324_TV_ANDROID_7.x"
 #include <utils/Log.h>
 #include "bt_vendor_rtk.h"
 #include "upio.h"

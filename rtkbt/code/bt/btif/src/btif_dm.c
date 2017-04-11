@@ -440,16 +440,14 @@ static BOOLEAN check_cached_remote_name(tBTA_DM_SEARCH *p_search_data,
 static uint32_t get_cod(const bt_bdaddr_t *remote_bdaddr) {
     uint32_t    remote_cod;
     bt_property_t prop_name;
-
     /* check if we already have it in our btif_storage cache */
     BTIF_STORAGE_FILL_PROPERTY(&prop_name, BT_PROPERTY_CLASS_OF_DEVICE,
                                sizeof(uint32_t), &remote_cod);
     if (btif_storage_get_remote_device_property((bt_bdaddr_t *)remote_bdaddr, &prop_name) == BT_STATUS_SUCCESS)
     {
-        LOG_INFO(LOG_TAG, "%s remote_cod = 0x%08x", __func__, remote_cod);
+        LOG_DEBUG(LOG_TAG, "%s remote_cod = 0x%08x", __func__, remote_cod);
         return remote_cod & COD_MASK;
     }
-
     return 0;
 }
 
