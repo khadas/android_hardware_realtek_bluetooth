@@ -117,6 +117,9 @@ static void event_init_stack(void *context) {
     module_init(get_module(OSI_MODULE));
     module_init(get_module(BT_UTILS_MODULE));
     module_init(get_module(BTIF_CONFIG_MODULE));
+#ifdef BLUETOOTH_RTK
+    module_init(get_module(RTKBT_PLUGIN_MODULE));
+#endif
     btif_init_bluetooth();
 
     // stack init is synchronous, so no waiting necessary here
@@ -210,6 +213,9 @@ static void event_clean_up_stack(void *context) {
   stack_is_initialized = false;
 
   btif_cleanup_bluetooth();
+#ifdef BLUETOOTH_RTK
+  module_clean_up(get_module(RTKBT_PLUGIN_MODULE));
+#endif
   module_clean_up(get_module(BTIF_CONFIG_MODULE));
   module_clean_up(get_module(BT_UTILS_MODULE));
   module_clean_up(get_module(OSI_MODULE));
@@ -225,11 +231,18 @@ cleanup:;
 static void event_signal_stack_up(UNUSED_ATTR void *context) {
   // Notify BTIF connect queue that we've brought up the stack. It's
   // now time to dispatch all the pending profile connect requests.
+#ifdef BLUETOOTH_RTK_API
+  rtkbt_api_Hook(RTKBT_HOOK_ENABLE_BT_COMPLETE, (void *)BT_STATE_ON, 0);
+#endif
   btif_queue_connect_next();
   HAL_CBACK(bt_hal_cbacks, adapter_state_changed_cb, BT_STATE_ON);
 }
 
 static void event_signal_stack_down(UNUSED_ATTR void *context) {
+#ifdef BLUETOOTH_RTK_API
+  rtkbt_api_Hook(RTKBT_HOOK_DISABLE_BT_COMPLETE, (void *)BT_STATE_OFF, 0);
+  UIPC_Close(UIPC_CH_ID_ALL);
+#endif
   HAL_CBACK(bt_hal_cbacks, adapter_state_changed_cb, BT_STATE_OFF);
 }
 

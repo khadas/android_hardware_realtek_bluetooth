@@ -536,9 +536,6 @@ void btif_enable_bluetooth_evt(tBTA_STATUS status)
 #ifdef BTIF_DM_OOB_TEST
         btif_dm_load_local_oob();
 #endif
-#ifdef BLUETOOTH_RTK_API
-        rtkbt_api_Hook(RTKBT_HOOK_ENABLE_BT_COMPLETE, (void *)BT_STATE_ON, 0);
-#endif
         future_ready(stack_manager_get_hack_future(), FUTURE_SUCCESS);
     }
     else
@@ -547,9 +544,7 @@ void btif_enable_bluetooth_evt(tBTA_STATUS status)
         btif_sock_cleanup();
 
         btif_pan_cleanup();
-#ifdef BLUETOOTH_RTK_API
-        rtkbt_api_Hook(RTKBT_HOOK_ENABLE_BT_COMPLETE, (void *)BT_STATE_OFF, 0);
-#endif
+
         future_ready(stack_manager_get_hack_future(), FUTURE_FAIL);
     }
 }
@@ -602,10 +597,7 @@ void btif_disable_bluetooth_evt(void)
 #endif
 
      bte_main_disable();
-#ifdef BLUETOOTH_RTK_API
-     rtkbt_api_Hook(RTKBT_HOOK_DISABLE_BT_COMPLETE, 0, 0);
-     UIPC_Close(UIPC_CH_ID_ALL);
-#endif
+
     /* callback to HAL */
     future_ready(stack_manager_get_hack_future(), FUTURE_SUCCESS);
 }

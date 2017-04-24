@@ -33,7 +33,7 @@
 *
 ******************************************************************************/
 #define LOG_TAG "rtk_parse"
-#define RTKBT_RELEASE_NAME "20170324_TV_ANDROID_7.x"
+#define RTKBT_RELEASE_NAME "20170418_TV_ANDROID_7.x"
 
 #include <utils/Log.h>
 #include <stdlib.h>

@@ -1,14 +1,10 @@
-# RELEASE NAME: 20170324_TV_ANDROID_7.x
+# RELEASE NAME: 20170418_TV_ANDROID_7.x
 # RTKBT_API_VERSION=3.1.1.0
 
 BOARD_HAVE_BLUETOOTH := true
 BOARD_HAVE_BLUETOOTH_RTK := true
 BOARD_HAVE_BLUETOOTH_RTK_COEX := true
 
-#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee1 rtkbtAutoPairService rtkbtAutoPairUIDemo 
-#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee1 rtkbtAutoPairService rtkbtAutoPairUIDemo vr_bee1_hidraw_daemon
-#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee2 rtkbtAutoPairService rtkbtAutoPairUIDemo 
-#BOARD_HAVE_BLUETOOTH_RTK_ADDON := bee2 rtkbtAutoPairService rtkbtAutoPairUIDemo vr_bee2_hidraw_daemon
 BOARD_HAVE_BLUETOOTH_RTK_ADDON := basic
 
 ifneq ($(BOARD_HAVE_BLUETOOTH_RTK_ADDON),)

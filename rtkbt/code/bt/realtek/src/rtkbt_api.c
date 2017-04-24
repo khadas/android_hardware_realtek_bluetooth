@@ -23,6 +23,7 @@ static rtkbt_callbacks_t * rtkbt_callbacks = NULL;
 static pthread_mutexattr_t rtkbt_mutexattr;
 static pthread_mutex_t rtkbt_mutex;
 static bool stopServiceFlag = false;
+static bool rtkbtPluginRunning = false;
 extern int rtkbt_loadconfig(char * path);
 extern int rtkbt_conf_init();
 extern int rtkbt_conf_exit();
@@ -373,9 +374,15 @@ void loadplugins(RTKBT_API_CALLBACK * callback)
 
 static bt_status_t init(rtkbt_callbacks_t* callbacks)
 {
+    if(rtkbtPluginRunning == true)
+    {
+        rtkbt_callbacks = callbacks;
+        return BT_STATUS_SUCCESS;
+    }
     BTIF_TRACE_API("%s RTKBT_API_VERSION: %08x", __FUNCTION__, RTKBT_API_VERSION);
     pthread_mutexattr_init(&rtkbt_mutexattr);
     pthread_mutex_init(&rtkbt_mutex, &rtkbt_mutexattr);
+    rtkbtPluginRunning = true;
     stopServiceFlag = false;
     memset(rtkbt_GenericCommand_funcs, 0, sizeof(rtkbt_GenericCommand_funcs));
     memset(rtkbt_Hook_funcs, 0, sizeof(rtkbt_Hook_funcs));
@@ -384,7 +391,6 @@ static bt_status_t init(rtkbt_callbacks_t* callbacks)
     rtkbt_callbacks = callbacks;
     UIPC_Init(0);
     loadplugins(&rtkbt_api_callbacks);
-    rtkbt_api_Hook(RTKBT_HOOK_ENABLE_BT_COMPLETE, (void *)BT_STATE_ON, 0);
     return BT_STATUS_SUCCESS;
 }
 static void cleanup()
@@ -402,6 +408,7 @@ static void cleanup()
     }
     memset(rtkbt_UipcPath, 0, sizeof(rtkbt_UipcPath));
     pthread_mutex_unlock(&rtkbt_mutex);
+    rtkbtPluginRunning = false;
     return;
 }
 
@@ -418,27 +425,26 @@ const rtkbt_interface_t *btif_rtkbt_get_interface(void)
     return &bt_rtkbt_interface;
 }
 
-static future_t *start_up(void) {
+static future_t *init_up(void) {
   init(NULL);
   return NULL;
 }
 
-static future_t *shut_down(void) {
+static future_t *clean_up(void) {
   cleanup();
   return NULL;
 }
 
 EXPORT_SYMBOL const module_t rtkbt_plugin_module = {
   .name = RTKBT_PLUGIN_MODULE,
-  .init = NULL,
-  .start_up = start_up,
-  .shut_down = shut_down,
-  .clean_up = NULL,
+  .init = init_up,
+  .start_up = NULL,
+  .shut_down = NULL,
+  .clean_up = clean_up,
   .dependencies = {
     NULL,
     NULL
   }
 };
-
 
 #endif

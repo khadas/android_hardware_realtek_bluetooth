@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 #define LOG_TAG "bt_vendor_usb"
-#define RTKBT_RELEASE_NAME "20170324_TV_ANDROID_7.x"
+#define RTKBT_RELEASE_NAME "20170418_TV_ANDROID_7.x"
 
 #include <fcntl.h>
 #include <errno.h>
