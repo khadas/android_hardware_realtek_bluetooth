@@ -11,7 +11,7 @@ LOCAL_CFLAGS += $(rtk_local_CFLAGS) -Wno-error=unused-parameter
 LOCAL_MODULE_TAGS := optional
 LOCAL_SHARED_LIBRARIES := libcutils libc
 LOCAL_MODULE := libbt-rtkbt
-LOCAL_MULTILIB := 32
+LOCAL_MULTILIB := both
 
 include $(BUILD_STATIC_LIBRARY)
 
